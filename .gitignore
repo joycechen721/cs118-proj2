@@ -4,3 +4,4 @@
 *.dSYM
 /project/server
 /project/client
+.vscode
