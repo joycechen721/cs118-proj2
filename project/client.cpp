@@ -4,6 +4,7 @@
 #include <string.h> // strlen
 #include <unistd.h> // close, etc.
 #include <errno.h> // Get errorno
+#include <fcntl.h>
 
 //./client client <flag> <hostname> <port> <ca_public_key_file>
 int main(int argc, char *argv[])
