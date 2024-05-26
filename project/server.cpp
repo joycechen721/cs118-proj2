@@ -14,6 +14,7 @@ int checkFiles(int flag, FILE *pkey, FILE *cert);
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in client_addr);
 
 // global variables
+#define BUF_SIZE 1024
 #define CONGESTION_WINDOW_SIZE 20 // at any point there should be max 20 unacked packets
 #define MAX_SEGMENT_SIZE 10 // payload size for each packet (bytes)
 #define MAX_PACKET_SEND_SIZE 2001
@@ -51,26 +52,21 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in servaddr;
     servaddr.sin_family = AF_INET; // use IPv4
     servaddr.sin_addr.s_addr = INADDR_ANY;
-
     // Set receiving port
     servaddr.sin_port = htons(port); // Big endian
 
-    /* 3. Let operating system know about our config */
-    int did_bind = bind(sockfd, (struct sockaddr*) &servaddr, 
-                        sizeof(servaddr));
-    // Error if did_bind < 0 :(
-    if (did_bind < 0) return errno;
-
-    /* 4. Create buffer to store incoming data */
-    int BUF_SIZE = 1024;
-    char client_buf[BUF_SIZE];
     struct sockaddr_in clientaddr; // Same information, but about client
     socklen_t clientsize = sizeof(clientaddr);
 
+    /* 3. Let operating system know about our config */
+    int did_bind = bind(sockfd, (struct sockaddr*) &servaddr, sizeof(servaddr));
+    // Error if did_bind < 0 :(
+    if (did_bind < 0) return errno;
 
     int curr_packet_num = 1;
     int left_pointer = 1; 
     int right_pointer = 20;
+
     Packet* server_window[MAX_PACKET_SEND_SIZE]; // server window, initialize all values to NULL 
     for (int i = 0; i < MAX_PACKET_SEND_SIZE; i++) {
         server_window[i] = NULL;
@@ -86,20 +82,39 @@ int main(int argc, char *argv[]) {
 
     time_t start = time(0); // initialize timer
     while (true) {
-        char *client_ip = inet_ntoa(clientaddr.sin_addr);
-        int client_port = ntohs(clientaddr.sin_port);
-        /* Do some processing here */
-        /* 5. Listen for data from clients */
-        memset(client_buf, 0, BUF_SIZE);
+        // read from stdin & send data to server
+        char read_buf[BUF_SIZE];
+        memset(read_buf, 0, BUF_SIZE);
+        ssize_t bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
+        if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
+            // create a new packet
+            Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
+            new_packet->packet_number = htonl(curr_packet_num);
+            new_packet->acknowledgment_number = 0;
+            new_packet->payload_size = htons(bytesRead);
+            memcpy(new_packet->data, read_buf, bytesRead);
+
+            input_window[curr_packet_num] = new_packet;
+            curr_packet_num += 1;
+
+            // send the packet
+            int did_send = sendto(sockfd, new_packet, sizeof(Packet) + bytesRead, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
+            if (did_send < 0) return errno;
+        }
+
+        // receive data from client
+        char client_buf[BUF_SIZE];
+        socklen_t clientsize;
         int bytes_recvd = recvfrom(sockfd, client_buf, BUF_SIZE, 0, (struct sockaddr*) &clientaddr, &clientsize);
-        // if (bytes_recvd <= 0) continue;
         if (bytes_recvd > 0) {
+            char* client_ip = inet_ntoa(clientaddr.sin_addr);
+            int client_port = ntohs(clientaddr.sin_port);
+
             Packet* received_packet = (Packet*)client_buf;
             uint32_t client_packet_number = ntohl(received_packet->packet_number);
             uint32_t client_ack_number = ntohl(received_packet->acknowledgment_number);
             uint16_t client_payload_size = ntohs(received_packet->payload_size);
-            
-            // Not an ack
+            // receive data --> send an ack
             if (client_packet_number != 0) {
                 // Update window to reflect new packet
                 server_window[client_packet_number] = (Packet*)malloc(sizeof(Packet) + client_payload_size);
@@ -122,8 +137,9 @@ int main(int argc, char *argv[]) {
                 // Now we can send the cumulative ack
                 send_ACK(left_pointer, sockfd, clientaddr);
             } 
-            // An ack
+            // receive an ack --> update input window
             else {
+                printf("received ack: %d\n", client_ack_number);
                 if (client_ack_number > input_left) {
                     start = time(0);
                     // Free packets from input_left to ack #
@@ -138,32 +154,33 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
-        // read from stdin & send to client
-        char server_buf[BUF_SIZE];
-        memset(server_buf, 0, BUF_SIZE);
-        ssize_t bytesRead = read(STDIN_FILENO, server_buf, MAX_SEGMENT_SIZE);
-        if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
-            // create a new packet
-            Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
-            if (new_packet == NULL) {
-                perror("Memory allocation failed");
-                break;
-            }
-            new_packet->packet_number = htonl(curr_packet_num);
-            new_packet->acknowledgment_number = (uint32_t) 0;
-            new_packet->payload_size = htons(bytesRead);
-            memcpy(new_packet->data, server_buf, bytesRead);
 
-            input_window[curr_packet_num] = new_packet;
-            curr_packet_num += 1;
+        // read from stdin & send to client
+        // char server_buf[BUF_SIZE];
+        // memset(server_buf, 0, BUF_SIZE);
+        // ssize_t bytesRead = read(STDIN_FILENO, server_buf, MAX_SEGMENT_SIZE);
+        // if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
+        //     // create a new packet
+        //     Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
+        //     if (new_packet == NULL) {
+        //         perror("Memory allocation failed");
+        //         break;
+        //     }
+        //     new_packet->packet_number = htonl(curr_packet_num);
+        //     new_packet->acknowledgment_number = (uint32_t) 0;
+        //     new_packet->payload_size = htons(bytesRead);
+        //     memcpy(new_packet->data, server_buf, bytesRead);
+
+        //     input_window[curr_packet_num] = new_packet;
+        //     curr_packet_num += 1;
             
-            // send the packet
-            int did_send = sendto(sockfd, new_packet, sizeof(new_packet), 0, (struct sockaddr *)&clientaddr, clientsize);
-            if (did_send < 0) {
-                perror("Failed Send");
-                continue;
-            }
-        }
+        //     // send the packet
+        //     int did_send = sendto(sockfd, new_packet, sizeof(new_packet), 0, (struct sockaddr *)&clientaddr, clientsize);
+        //     if (did_send < 0) {
+        //         perror("Failed Send");
+        //         continue;
+        //     }
+        // }
         // TEST CODE FOR SENDS
         // // send data to client
         // char server_buf[] = "Hello world!";
