@@ -50,9 +50,8 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in serveraddr;
     serveraddr.sin_family = AF_INET; // use IPv4
     serveraddr.sin_addr.s_addr = INADDR_ANY;
-
-    // Set sending port
     serveraddr.sin_port = htons(port); // Big endian
+    socklen_t serversize = sizeof(serveraddr);
 
     int curr_packet_num = 1;
     int left_pointer = 1; 
@@ -95,28 +94,28 @@ int main(int argc, char *argv[]) {
 
         // receive data from server
         char server_buf[BUF_SIZE];
-        socklen_t serversize;
+        socklen_t serversize = sizeof(serveraddr);
         int bytes_recvd = recvfrom(sockfd, server_buf, BUF_SIZE, 0, (struct sockaddr*)&serveraddr, &serversize);
         if (bytes_recvd > 0) {
             Packet* received_packet = (Packet*)server_buf;
-            uint32_t client_packet_number = ntohl(received_packet->packet_number);
-            uint32_t client_ack_number = ntohl(received_packet->acknowledgment_number);
-            uint16_t client_payload_size = ntohs(received_packet->payload_size);
+            uint32_t received_packet_number = ntohl(received_packet->packet_number);
+            uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
+            uint16_t received_payload_size = ntohs(received_packet->payload_size);
             // receive data --> send an ack
-            if (client_packet_number != 0) {
+            if (received_packet_number != 0) {
                 // Update window to reflect new packet
-                server_window[client_packet_number] = (Packet*)malloc(sizeof(Packet) + client_payload_size);
-                if (server_window[client_packet_number] == NULL) {
+                server_window[received_packet_number] = (Packet*)malloc(sizeof(Packet) + received_payload_size);
+                if (server_window[received_packet_number] == NULL) {
                     perror("Memory allocation failed");
                     close(sockfd);
                     return 1;
                 }
-                memcpy(server_window[client_packet_number], received_packet, sizeof(Packet) + client_payload_size);
+                memcpy(server_window[received_packet_number], received_packet, sizeof(Packet) + received_payload_size);
 
                 // Update left pointer until it points to nothing, adjust right pointer too
-                while (server_window[left_pointer] != NULL) { //move sender window forward since client acked
+                while (server_window[left_pointer] != NULL) { //move sender window forward since received acked
                     uint8_t *payload = received_packet->data;
-                    write(1, payload, client_payload_size);
+                    write(1, payload, received_payload_size);
                     if (server_window[left_pointer] != NULL) {
                         free(server_window[left_pointer]);
                         server_window[left_pointer] = NULL;
@@ -131,24 +130,24 @@ int main(int argc, char *argv[]) {
             } 
             // receive an ack --> update input window
             else {
-                printf("received ack: %d\n", client_ack_number);
-                if (client_ack_number > input_left) {
+                printf("received ack: %d\n", received_ack_number);
+                if (received_ack_number > input_left) {
                     start = time(0);
                     // Free packets from input_left to ack #
-                    for (int i = input_left; i < client_ack_number; i++) {
+                    for (int i = input_left; i < received_ack_number; i++) {
                         if (input_window[i] != NULL) {
                             free(input_window[i]);
                             input_window[i] = NULL;
                         }
                     }
-                    input_left = client_ack_number;
+                    input_left = received_ack_number;
                     input_right = 20 + input_left;
                 }
             }
         }
         // TEST CODE for SEND:
-        // // char client_buf[] = "Hello earth!";
-        // int did_send = sendto(sockfd, client_buf, strlen(client_buf), 0, (struct sockaddr*) &serveraddr, sizeof(serveraddr));
+        // // char received_buf[] = "Hello earth!";
+        // int did_send = sendto(sockfd, received_buf, strlen(received_buf), 0, (struct sockaddr*) &serveraddr, sizeof(serveraddr));
         // if (did_send < 0) continue;
 
         /* 4. Create buffer to store incoming data */
