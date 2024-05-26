@@ -60,25 +60,42 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in clientaddr;
     socklen_t clientsize = sizeof(clientaddr);
 
+    // buffer for packets received from server
+    Packet* server_window[MAX_PACKET_SEND_SIZE] = {NULL};
     int curr_packet_num = 1;
     int left_pointer = 1; 
     int right_pointer = 20;
 
-    Packet* server_window[MAX_PACKET_SEND_SIZE]; // server window, initialize all values to NULL 
-    for (int i = 0; i < MAX_PACKET_SEND_SIZE; i++) {
-        server_window[i] = NULL;
-    }
-    
+    // buffer for packets to send out
+    Packet* input_window[MAX_PACKET_SEND_SIZE] = {NULL};
     int input_left = 1; // oldest unacked packet (leftmost)
     int input_right = 19;
 
-    Packet* input_window[MAX_PACKET_SEND_SIZE]; // input window, initialize all values to NULL 
-    for (int i = 0; i < MAX_PACKET_SEND_SIZE; i++) {
-        input_window[i] = NULL;
-    }
-
-    time_t start = time(0); // initialize timer
+    // initialize timer
+    bool timer_active = false;
+    struct timeval timer_start;
     while (true) {
+        // retransmission from rto
+        if (timer_active) {
+            struct timeval now;
+            gettimeofday(&now, NULL);
+            double elapsed_time = (now.tv_sec - timer_start.tv_sec) + (now.tv_usec - timer_start.tv_usec) / 1e6;
+            // timer expired
+            if (elapsed_time >= RTO) {
+                // retransmit leftmost unacked packet if not NULL
+                Packet* retransmit = input_window[input_left];
+                if (retransmit) {
+                    printf("Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
+                    int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&clientaddr, clientsize);
+                    if (did_send < 0) {
+                        perror("Retransmit failed");
+                    }
+                }
+                // reset timer
+                gettimeofday(&timer_start, NULL);
+            }
+        }
+
         // receive data from client
         char client_buf[BUF_SIZE];
         socklen_t clientsize = sizeof(clientaddr);
@@ -115,8 +132,7 @@ int main(int argc, char *argv[]) {
             else {
                 printf("received ack: %d\n", received_ack_number);
                 if (received_ack_number > input_left) {
-                    start = time(0);
-                    // Free packets from input_left to ack #
+                    // free packets from input_left to ack #
                     for (int i = input_left; i < received_ack_number; i++) {
                         if (input_window[i] != NULL) {
                             free(input_window[i]);
@@ -125,6 +141,15 @@ int main(int argc, char *argv[]) {
                     }
                     input_left = received_ack_number;
                     input_right = 20 + input_left;
+
+                    // cancel timer if no unacked packets
+                    if (input_left == curr_packet_num) {
+                        timer_active = false;
+                    } 
+                    // reset timer otherwise
+                    else {
+                        gettimeofday(&timer_start, NULL);
+                    }
                 }
             }
         }
@@ -147,6 +172,12 @@ int main(int argc, char *argv[]) {
             // send the packet
             int did_send = sendto(sockfd, new_packet, sizeof(Packet) + bytesRead, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
             if (did_send < 0) return errno;
+
+            // reset timer
+            if (!timer_active) {
+                timer_active = true;
+                gettimeofday(&timer_start, NULL);
+            }
         }
     }
     /* 8. You're done! Terminate the connection */     
