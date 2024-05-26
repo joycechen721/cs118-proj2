@@ -77,6 +77,61 @@ int main(int argc, char *argv[]) {
     time_t start = time(0); // initialize timer
     while(true){
 
+        int BUF_SIZE = 1024;
+        char server_buf[BUF_SIZE];
+        socklen_t serversize;
+        int bytes_recvd = recvfrom(sockfd, server_buf, BUF_SIZE, 0, (struct sockaddr*)&serveraddr, &serversize);
+        
+        if (bytes_recvd > 0) {
+            Packet* received_packet = (Packet*)client_buf;
+            uint32_t client_packet_number = ntohl(received_packet->packet_number);
+            uint32_t client_ack_number = ntohl(received_packet->acknowledgment_number);
+            uint16_t client_payload_size = ntohs(received_packet->payload_size);
+            
+            // Not an ack
+            if (client_packet_number != 0) {
+                // Update window to reflect new packet
+                server_window[client_packet_number] = (Packet*)malloc(sizeof(Packet) + client_payload_size);
+                if (server_window[client_packet_number] == NULL) {
+                    perror("Memory allocation failed");
+                    close(sockfd);
+                    return 1;
+                }
+                memcpy(server_window[client_packet_number], received_packet, sizeof(Packet) + client_payload_size);
+
+                // Update left pointer until it points to nothing, adjust right pointer too
+                while (server_window[left_pointer] != NULL) { //move sender window forward since client acked
+                    uint8_t *payload = received_packet->data;
+                    write(1, payload, client_payload_size);
+                    if (server_window[left_pointer] != NULL) {
+                            free(server_window[left_pointer]);
+                            server_window[left_pointer] = NULL;
+                    }
+                    left_pointer += 1;
+                    if (left_pointer < MAX_PACKET_SEND_SIZE - 20) {
+                        right_pointer += 1;
+                    }
+                }
+                // Now we can send the cumulative ack
+                send_ACK(left_pointer, sockfd, clientaddr);
+            } 
+            // An ack
+            else {
+                if (client_ack_number > input_left) {
+                    start = time(0);
+                    // Free packets from input_left to ack #
+                    for (int i = input_left; i < client_ack_number; i++) {
+                        if (input_window[i] != NULL) {
+                            free(input_window[i]);
+                            input_window[i] = NULL;
+                        }
+                    }
+                    input_left = client_ack_number;
+                    input_right = 20 + input_left;
+                }
+            }
+        }
+        
         // read from stdin & send data to server
         char read_buf[BUF_SIZE];
         memset(read_buf, 0, BUF_SIZE);
@@ -106,17 +161,6 @@ int main(int argc, char *argv[]) {
         // if (did_send < 0) continue;
 
         /* 4. Create buffer to store incoming data */
-        int BUF_SIZE = 1024;
-        char server_buf[BUF_SIZE];
-        socklen_t serversize;
-        int bytes_recvd = recvfrom(sockfd, server_buf, BUF_SIZE, 0, (struct sockaddr*)&serveraddr, &serversize);
-        
-        if (bytes_recvd > 0) {
-            // extract sequence number 
-            Packet* received_packet = (Packet*)server_buf;
-            uint32_t received_ack = ntohl(received_packet->acknowledgment_number);
-            printf("%d\n", received_ack);
-        }
         // write(1, server_buf, bytes_recvd);
     }
     /* 6. You're done! Terminate the connection */     
