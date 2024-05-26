@@ -7,23 +7,25 @@
 #include <errno.h>      // Get errorno
 #include <stdio.h>
 #include <fcntl.h>
-// ./server server <flag> <port> <private_key_file> <certificate_file>=
+#include <stdlib.h>
+#include <time.h>
 
 // helper functions
 int checkFiles(int flag, FILE *pkey, FILE *cert);
+void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in client_addr, socklen_t clientsize);
 
-//global variables
-#define CONGESTION_WINDOW_SIZE 20 //at any point there should be max 20 unacked packets
-#define MAX_SEGMENT_SIZE 1024 //payload size for each packet (bytes)
+// global variables
+#define CONGESTION_WINDOW_SIZE 20 // at any point there should be max 20 unacked packets
+#define MAX_SEGMENT_SIZE 10 // payload size for each packet (bytes)
 #define MAX_PACKET_SEND_SIZE 2001
-#define RTO 1 //retransmission timer
+#define RTO 1 // retransmission timer
 
 typedef struct {
     uint32_t packet_number;        // 32-bit Packet Number
     uint32_t acknowledgment_number; // 32-bit Acknowledgment Number
     uint16_t payload_size;         // 16-bit Payload Size
     uint8_t padding[2];              // 16-bit Padding
-    uint8_t data[0];     
+    uint8_t data[];     
 } Packet;
 
 int main(int argc, char *argv[])
@@ -50,88 +52,154 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /* 1. Create socket */
+    // 1. Create socket
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    /* 2. Construct our address */
+    if (sockfd < 0) {
+        perror("Socket creation failed");
+        return errno;
+    }
+
+    // 2. Construct our address
     struct sockaddr_in servaddr;
+    memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = INADDR_ANY;
-    // Set receiving port
-    int PORT = 8080;
-    servaddr.sin_port = htons(PORT); // Big endian
+    servaddr.sin_port = htons(port); // Set receiving port
 
-    /* 3. Let operating system know about our config */
-    if (bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
+    // 3. Let operating system know about our config
+    if (bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
+        perror("Bind failed");
+        close(sockfd);
         return errno;
+    }
 
-    // Setup fd set for nonblock
+    // Setup fd set for non-blocking mode
     int flags = fcntl(sockfd, F_GETFL);
     flags |= O_NONBLOCK;
     fcntl(sockfd, F_SETFL, flags);
 
-    /* 4. Create buffer to store incoming data */
+    // 4. Create buffer to store incoming data
     int BUF_SIZE = 1024;
     char client_buf[BUF_SIZE];
     struct sockaddr_in clientaddr; // Same information, but about client
-    socklen_t clientsize = sizeof(clientaddr);
+    socklen_t clientsize = sizeof(clientaddr); // Initialize clientsize
 
     int curr_packet_num = 1;
-    int curr_ack = 0; //oldest unacked packet (leftmost)
-    Packet* server_window[MAX_PACKET_SEND_SIZE]; //server window, initialize all values to -1 
+    int left_pointer = 1; 
+    int right_pointer = 20;
+
+    Packet* server_window[MAX_PACKET_SEND_SIZE]; // server window, initialize all values to NULL 
     for (int i = 0; i < MAX_PACKET_SEND_SIZE; i++) {
         server_window[i] = NULL;
     }
-    time_t start = time(0); //initialize timer
     
-    while (true)
-    {
-        double seconds_since_start = difftime(time(0), start);
-        if (seconds_since_start >= 1.0) {
-            //resend leftmost packet
-            
-            start = time(0);
-        }
+    int input_left = 1; // oldest unacked packet (leftmost)
+    int input_right = 19;
 
-        /* get client data from socket */
-        int bytes_recvd = recvfrom(sockfd, client_buf, BUF_SIZE, 0, (struct sockaddr *)&clientaddr, &clientsize);
-        Packet* received_packet = (Packet*)client_buf;
-
-        uint32_t client_packet_number = ntohl(received_packet->packet_number);
-        uint32_t client_ack_number = ntohl(received_packet->acknowledgment_number);
-        uint16_t client_payload_size = ntohs(received_packet->payload_size);
-        // Padding bytes are skipped
-        uint8_t* client_payload = received_packet->data;
-        //not an ack
-        if (client_packet_number != 0) {
-            //update window to reflect new packet
-            server_window[client_packet_number] = received_packet; 
-            //update left pointer until it points to nothing, adjust right pointer too
-            while()
-            //send an ack to client
-        } 
-        // an ack
-        else {
-            //new ack
-            if (client_ack_number > curr_ack) {
-                start = time(0);
-            }
-            //old ack
-        }
-        // No data yet, we can continue processing at the top of this loop
-        // if (bytes_recvd <= 0) continue;
-        
-         /* Data available. Write to standard output*/
-        printf("%s\n", bytes_recvd);
-        
-         /* Read from standard input & send to client */
-        char *client_ip = inet_ntoa(clientaddr.sin_addr);
-        int client_port = ntohs(clientaddr.sin_port);
-        char server_buf[1024];
-        read(STDIN_FILENO, server_buf, 1024);
-        int did_send = sendto(sockfd, server_buf, strlen(server_buf), 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
+    Packet* input_window[MAX_PACKET_SEND_SIZE]; // input window, initialize all values to NULL 
+    for (int i = 0; i < MAX_PACKET_SEND_SIZE; i++) {
+        input_window[i] = NULL;
     }
 
-    /* 8. You're done! Terminate the connection */
+    time_t start = time(0); // initialize timer
+
+    while (true)
+    {
+        char *client_ip = inet_ntoa(clientaddr.sin_addr);
+        int client_port = ntohs(clientaddr.sin_port);
+
+        double seconds_since_start = difftime(time(0), start);
+        if (seconds_since_start >= 1.0) {
+            // retransmit leftmost packet
+            Packet* retransmit = input_window[input_left];
+            if (retransmit) {
+                int did_send = sendto(sockfd, retransmit, sizeof(Packet) + retransmit->payload_size, 0, (struct sockaddr *)&clientaddr, clientsize);
+                if (did_send < 0) {
+                    perror("Retransmit failed");
+                }
+            }
+            start = time(0);
+        }
+        
+        // read client data from socket
+        memset(client_buf, 0, BUF_SIZE);
+        int bytes_recvd = recvfrom(sockfd, client_buf, BUF_SIZE, 0, (struct sockaddr *)&clientaddr, &clientsize);
+        // if (bytes_recvd <= 0) continue;
+        if (bytes_recvd > 0) {
+            std::cout << "Received " << bytes_recvd << " bytes from " << client_ip << ":" << client_port << std::endl;
+
+            Packet* received_packet = (Packet*)client_buf;
+            uint32_t client_packet_number = ntohl(received_packet->packet_number);
+            uint32_t client_ack_number = ntohl(received_packet->acknowledgment_number);
+            uint16_t client_payload_size = ntohs(received_packet->payload_size);
+
+            // Not an ack
+            if (client_packet_number != 0) {
+                // Update window to reflect new packet
+                server_window[client_packet_number] = (Packet*)malloc(sizeof(Packet) + client_payload_size);
+                if (server_window[client_packet_number] == NULL) {
+                    perror("Memory allocation failed");
+                    close(sockfd);
+                    return 1;
+                }
+                memcpy(server_window[client_packet_number], received_packet, sizeof(Packet) + client_payload_size);
+
+                // Update left pointer until it points to nothing, adjust right pointer too
+                while (server_window[left_pointer] != NULL) {
+                    left_pointer += 1;
+                    if (left_pointer < MAX_PACKET_SEND_SIZE - 20) {
+                        right_pointer += 1;
+                    }
+                }
+                // Now we can send the cumulative ack
+                send_ACK(left_pointer, sockfd, clientaddr, clientsize);
+            } else {
+                // An ack
+                if (client_ack_number > input_left) {
+                    start = time(0);
+                    // Free packets from input_left to ack #
+                    for (int i = input_left; i < client_ack_number; i++) {
+                        if (input_window[i] != NULL) {
+                            free(input_window[i]);
+                            input_window[i] = NULL;
+                        }
+                    }
+                    input_left = client_ack_number;
+                    input_right = 20 + input_left;
+                }
+            }
+        }
+
+        // read from stdin & send to client
+        char server_buf[BUF_SIZE];
+        memset(server_buf, 0, BUF_SIZE);
+        ssize_t bytesRead = read(STDIN_FILENO, server_buf, MAX_SEGMENT_SIZE);
+        if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
+            // create a new packet
+            Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
+            if (new_packet == NULL) {
+                perror("Memory allocation failed");
+                break;
+            }
+            new_packet->packet_number = htonl(curr_packet_num);
+            new_packet->acknowledgment_number = 0;
+            new_packet->payload_size = htons(bytesRead);
+            memcpy(new_packet->data, server_buf, bytesRead);
+
+            input_window[curr_packet_num] = new_packet;
+            curr_packet_num += 1;
+            
+            printf("%s\n", server_buf);
+            // send the packet
+            int did_send = sendto(sockfd, new_packet, sizeof(Packet) + bytesRead, 0, (struct sockaddr *)&clientaddr, clientsize);
+            if (did_send < 0) {
+                printf("%ld\n", bytesRead);
+                free(new_packet); // Free the packet memory on failure
+                continue;
+            }
+        }
+    } 
+
     close(sockfd);
 
     // include security stuff
@@ -140,7 +208,6 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
 
 int checkFiles(int flag, FILE *pkey, FILE *cert)
 {
@@ -172,32 +239,8 @@ int checkFiles(int flag, FILE *pkey, FILE *cert)
 }
 
 // Sends cumulative ACK depending on the packet number received
-// If the 
-int send_ACK(Packet *packet, Packet* server_window, int left_window_index, int sockfd, struct sockaddr * & client_addr) {
-    uint32_t packet_number = ntohl(packet->packet_number);
-    uint32_t last_ack_number = server_window[left_window_index].packet_number;
-
+void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in client_addr, socklen_t clientsize) {
     Packet ack_packet = {0};
-
-    if (packet_number == last_ack_number + 1) {
-        ack_packet.acknowledgment_number = htonl(last_ack_number + 1);
-        // TODO: Verify sendto works
-        sendto(sockfd, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&client_addr, client_addr_len);
-        return packet_number;
-    } else {
-        // Packet out of order or duplicate, send the last ACK again
-        ack_packet.acknowledgment_number = htonl(last_ack_number + 1);
-        // TODO: Verify sendto works
-        sendto(sockfd, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&client_addr, client_addr_len);
-        return last_ack_number;
-    }
-}
-
-void update_window(Packet *client_packet, Packet* server_window, int left_pointer, int right_pointer){
-    uint32_t client_packet_number = ntohl(client_packet->packet_number);
-   if((int) client_packet_number == left_pointer){
-        while(server_window[left_pointer] != NULL){
-            
-        }
-   }    
+    ack_packet.acknowledgment_number = htonl(left_window_index);
+    sendto(sockfd, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&client_addr, clientsize);
 }
