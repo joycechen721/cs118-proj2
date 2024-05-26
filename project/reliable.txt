@@ -1,0 +1,28 @@
+packet tosend[MAX_SEQ];
+packet torecv[MAX_SEQ];
+
+while (1) {
+    int base_seq = 1; // Last ACKed packet
+    int seq = 1; // Last sent packet
+
+    // Get data from peer
+    // Non-blocking; check eado.me > Socket Programming Tips
+    int bytes_recvd = recvfrom();
+
+    // Check if data from peer, then process
+    if (bytes_recvd > 0) process_data();
+
+    // Retransmit if needed
+    if (timer_set() && base_seq < seq) {
+        // Send packet with lowest SEQ that's unACKed
+        sendto(get_pkt(base_seq));
+    }
+
+    // Send packet if within window
+    if (packet_available() && seq < base_seq + CWND) {
+        sendto(get_pkt(seq - 1));
+    }
+
+    // Read from stdin
+    make_packet();
+}
