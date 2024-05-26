@@ -25,7 +25,7 @@ typedef struct {
     uint32_t acknowledgment_number; // 32-bit Acknowledgment Number
     uint16_t payload_size;         // 16-bit Payload Size
     uint8_t padding[2];              // 16-bit Padding
-    uint8_t data[];     
+    uint8_t data[0];     
 } Packet;
 
 int main(int argc, char *argv[])
@@ -113,6 +113,7 @@ int main(int argc, char *argv[])
             // retransmit leftmost packet
             Packet* retransmit = input_window[input_left];
             if (retransmit) {
+                printf("Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
                 int did_send = sendto(sockfd, retransmit, sizeof(Packet) + retransmit->payload_size, 0, (struct sockaddr *)&clientaddr, clientsize);
                 if (did_send < 0) {
                     perror("Retransmit failed");
@@ -125,6 +126,7 @@ int main(int argc, char *argv[])
         memset(client_buf, 0, BUF_SIZE);
         int bytes_recvd = recvfrom(sockfd, client_buf, BUF_SIZE, 0, (struct sockaddr *)&clientaddr, &clientsize);
         // if (bytes_recvd <= 0) continue;
+        
         if (bytes_recvd > 0) {
             std::cout << "Received " << bytes_recvd << " bytes from " << client_ip << ":" << client_port << std::endl;
 
@@ -182,19 +184,17 @@ int main(int argc, char *argv[])
                 break;
             }
             new_packet->packet_number = htonl(curr_packet_num);
-            new_packet->acknowledgment_number = 0;
+            new_packet->acknowledgment_number = (uint32_t) 0;
             new_packet->payload_size = htons(bytesRead);
             memcpy(new_packet->data, server_buf, bytesRead);
 
             input_window[curr_packet_num] = new_packet;
             curr_packet_num += 1;
             
-            printf("%s\n", server_buf);
             // send the packet
-            int did_send = sendto(sockfd, new_packet, sizeof(Packet) + bytesRead, 0, (struct sockaddr *)&clientaddr, clientsize);
+            int did_send = sendto(sockfd, new_packet, sizeof(new_packet), 0, (struct sockaddr *)&clientaddr, clientsize);
             if (did_send < 0) {
-                printf("%ld\n", bytesRead);
-                free(new_packet); // Free the packet memory on failure
+                perror("Failed Send");
                 continue;
             }
         }
