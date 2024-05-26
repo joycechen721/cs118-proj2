@@ -21,3 +21,7 @@ clean:
 dist: tarball
 tarball: clean
 	tar -cvzf /tmp/$(USERID).tar.gz --exclude=./.vagrant . && mv /tmp/$(USERID).tar.gz .
+
+# security:
+# 	gcc ${CFLAGS} -o server server.cpp security.cpp
+# 	gcc ${CFLAGS} -o client client.cpp security.cpp

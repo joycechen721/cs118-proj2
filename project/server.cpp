@@ -11,7 +11,7 @@
 
 // helper functions
 int checkFiles(int flag, FILE *pkey, FILE *cert);
-void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in client_addr, socklen_t clientsize);
+void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in client_addr);
 
 // global variables
 #define CONGESTION_WINDOW_SIZE 20 // at any point there should be max 20 unacked packets
@@ -94,8 +94,6 @@ int main(int argc, char *argv[]) {
         int bytes_recvd = recvfrom(sockfd, client_buf, BUF_SIZE, 0, (struct sockaddr*) &clientaddr, &clientsize);
         // if (bytes_recvd <= 0) continue;
         if (bytes_recvd > 0) {
-            // std::cout << "Received " << bytes_recvd << " bytes from " << client_ip << ":" << client_port << std::endl;
-
             Packet* received_packet = (Packet*)client_buf;
             uint32_t client_packet_number = ntohl(received_packet->packet_number);
             uint32_t client_ack_number = ntohl(received_packet->acknowledgment_number);
@@ -122,9 +120,10 @@ int main(int argc, char *argv[]) {
                     }
                 }
                 // Now we can send the cumulative ack
-                send_ACK(left_pointer, sockfd, clientaddr, clientsize);
-            } else {
-                // An ack
+                send_ACK(left_pointer, sockfd, clientaddr);
+            } 
+            // An ack
+            else {
                 if (client_ack_number > input_left) {
                     start = time(0);
                     // Free packets from input_left to ack #
@@ -137,6 +136,32 @@ int main(int argc, char *argv[]) {
                     input_left = client_ack_number;
                     input_right = 20 + input_left;
                 }
+            }
+        }
+        // read from stdin & send to client
+        char server_buf[BUF_SIZE];
+        memset(server_buf, 0, BUF_SIZE);
+        ssize_t bytesRead = read(STDIN_FILENO, server_buf, MAX_SEGMENT_SIZE);
+        if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
+            // create a new packet
+            Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
+            if (new_packet == NULL) {
+                perror("Memory allocation failed");
+                break;
+            }
+            new_packet->packet_number = htonl(curr_packet_num);
+            new_packet->acknowledgment_number = (uint32_t) 0;
+            new_packet->payload_size = htons(bytesRead);
+            memcpy(new_packet->data, server_buf, bytesRead);
+
+            input_window[curr_packet_num] = new_packet;
+            curr_packet_num += 1;
+            
+            // send the packet
+            int did_send = sendto(sockfd, new_packet, sizeof(new_packet), 0, (struct sockaddr *)&clientaddr, clientsize);
+            if (did_send < 0) {
+                perror("Failed Send");
+                continue;
             }
         }
         // TEST CODE FOR SENDS
@@ -178,8 +203,8 @@ int checkFiles(int flag, FILE *pkey, FILE *cert) {
 }
 
 // Sends cumulative ACK depending on the packet number received
-void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in client_addr, socklen_t clientsize) {
+void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in client_addr) {
     Packet ack_packet = {0};
     ack_packet.acknowledgment_number = htonl(left_window_index);
-    sendto(sockfd, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&client_addr, clientsize);
+    sendto(sockfd, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
 }

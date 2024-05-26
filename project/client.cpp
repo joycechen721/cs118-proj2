@@ -11,7 +11,7 @@
 
 // helper functions
 int checkFiles(int flag, FILE *file);
-void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in client_addr, socklen_t clientsize);
+void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in client_addr);
 
 // global variables
 #define CONGESTION_WINDOW_SIZE 20 // at any point there should be max 20 unacked packets
@@ -111,9 +111,12 @@ int main(int argc, char *argv[]) {
         socklen_t serversize;
         int bytes_recvd = recvfrom(sockfd, server_buf, BUF_SIZE, 0, (struct sockaddr*)&serveraddr, &serversize);
         
-        // if (bytes_recvd < 0) {
-        //     continue;
-        // }
+        if (bytes_recvd > 0) {
+            // extract sequence number 
+            Packet* received_packet = (Packet*)server_buf;
+            uint32_t received_ack = ntohl(received_packet->acknowledgment_number);
+            printf("%d\n", received_ack);
+        }
         // write(1, server_buf, bytes_recvd);
     }
     /* 6. You're done! Terminate the connection */     
