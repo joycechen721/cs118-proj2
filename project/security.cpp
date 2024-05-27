@@ -5,7 +5,6 @@
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 #include <stdio.h>
-
 #include "security.h"
 
 EVP_PKEY* ec_priv_key = NULL;
@@ -117,18 +116,25 @@ size_t sign(char* data, size_t size, char* signature) {
 }
 
 int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* authority) {
-    // TODO: Implement this yourself! Hint: it's very similar to `sign`. 
-    // See https://wiki.openssl.org/index.php/EVP_Signing_and_Verifying
     EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
-
-    EVP_DigestVerifyInit(mdctx, NULL, EVP_sha256(), NULL, authority);
-    EVP_DigestVerifyUpdate(mdctx, data, size);
-    EVP_DigestVerifyFinal(mdctx, (unsigned char *)signature, sig_size);
+    if (!mdctx) {
+        return 0; 
+    }
+    if (EVP_DigestVerifyInit(mdctx, NULL, EVP_sha256(), NULL, authority) != 1) {
+        // Handle error: failed to initialize verification
+        EVP_MD_CTX_free(mdctx);
+        return 0; 
+    }
+    if (EVP_DigestVerifyUpdate(mdctx, data, size) != 1) {
+        // Handle error: failed to update verification context
+        EVP_MD_CTX_free(mdctx);
+        return 0;
+    }
+    int verification_result = EVP_DigestVerifyFinal(mdctx, (unsigned char *)signature, sig_size);
     EVP_MD_CTX_free(mdctx);
-
-    EVP_MD_CTX_free(mdctx);
-    return 1;
+    return verification_result;
 }
+
 
 void generate_nonce(char* buf, int size) {
     RAND_bytes((unsigned char*) buf, size);
@@ -152,8 +158,14 @@ size_t encrypt_data(char *data, size_t size, char *iv, char *cipher, int using_m
 size_t decrypt_cipher(char *cipher, size_t size, char *iv, char *data, int using_mac) {
     // TODO: Implement this yourself! Hint: it's very similar to `encrypt_data`.
     // See https://wiki.openssl.org/index.php/EVP_Symmetric_Encryption_and_Decryption
-
-    return 0;
+    int len;
+    int plaintext_len;
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, (const unsigned char*) (using_mac ? enc_key : secret), (const unsigned char*) iv);
+    EVP_DecryptUpdate(ctx, (unsigned char*) data, &len, (const unsigned char*) cipher, size);
+    EVP_DecryptFinal_ex(ctx, (unsigned char*)data + len, &len);
+    EVP_CIPHER_CTX_free(ctx);
+    return plaintext_len;
 }
 
 void hmac(char* data, size_t size, char* digest) {

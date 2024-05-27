@@ -74,6 +74,7 @@ int main(int argc, char *argv[]) {
     // initialize timer
     bool timer_active = false;
     struct timeval timer_start;
+    bool client_send = false;
     while (true) {
         // retransmission from rto
         if (timer_active) {
@@ -101,6 +102,7 @@ int main(int argc, char *argv[]) {
         socklen_t clientsize = sizeof(clientaddr);
         int bytes_recvd = recvfrom(sockfd, client_buf, BUF_SIZE, 0, (struct sockaddr*) &clientaddr, &clientsize);
         if (bytes_recvd > 0) {
+            client_send = true;
             Packet* received_packet = (Packet*)client_buf;
             uint32_t received_packet_number = ntohl(received_packet->packet_number);
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
@@ -158,7 +160,7 @@ int main(int argc, char *argv[]) {
         char read_buf[BUF_SIZE];
         memset(read_buf, 0, BUF_SIZE);
         ssize_t bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
-        if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
+        if (client_send && bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
             // create a new packet
             Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
             new_packet->packet_number = htonl(curr_packet_num);
@@ -171,7 +173,10 @@ int main(int argc, char *argv[]) {
 
             // send the packet
             int did_send = sendto(sockfd, new_packet, sizeof(Packet) + bytesRead, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
-            if (did_send < 0) return errno;
+            if (did_send < 0){ 
+                perror("error sending");
+                return errno;
+            }
 
             // reset timer
             if (!timer_active) {
@@ -179,6 +184,7 @@ int main(int argc, char *argv[]) {
                 gettimeofday(&timer_start, NULL);
             }
         }
+
     }
     /* 8. You're done! Terminate the connection */     
     close(sockfd);

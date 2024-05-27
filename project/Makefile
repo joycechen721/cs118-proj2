@@ -10,10 +10,10 @@ DEPS=$(HELPER_SRCS:.cpp=.d)
 
 all: server client
 server: server.o $(HELPER_SRCS:.cpp=.o)
-	$(CXX) -o $@ $^ $(CXXFLAGS)
+	$(CXX) -o $@ $^ security.cpp $(CXXFLAGS)
 
 client: client.o $(HELPER_SRCS:.cpp=.o)
-	$(CXX) -o $@ $^ $(CXXFLAGS)
+	$(CXX) -o $@ $^ security.cpp $(CXXFLAGS)
 
 clean:
 	rm -rf *.o helpers/*.o server client *.tar.gz
@@ -22,6 +22,7 @@ dist: tarball
 tarball: clean
 	tar -cvzf /tmp/$(USERID).tar.gz --exclude=./.vagrant . && mv /tmp/$(USERID).tar.gz .
 
-# security:
-# 	gcc ${CFLAGS} -o server server.cpp security.cpp
-# 	gcc ${CFLAGS} -o client client.cpp security.cpp
+
+security:
+	gcc ${CFLAGS} -o server server.cpp security.cpp
+	gcc ${CFLAGS} -o client client.cpp security.cpp

@@ -1,8 +1,8 @@
 FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update
-RUN apt-get install --yes --no-install-recommends \
+RUN apt-get update && \
+    apt-get install --yes --no-install-recommends \
     autoconf \
     build-essential \
     sudo \
@@ -19,4 +19,7 @@ RUN apt-get install --yes --no-install-recommends \
     pkg-config \
     python3 \
     python3-pip \
-    libssl-dev
+    libssl-dev \
+    g++ \
+    make && \
+    rm -rf /var/lib/apt/lists/*
