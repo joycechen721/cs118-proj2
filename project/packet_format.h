@@ -10,16 +10,14 @@ typedef struct {
     uint8_t data[0];     
 } Packet;
 
-typedef enum {
-    CLIENT_HELLO = 1,
-    SERVER_HELLO = 2,
-    KEY_EXCHANGE_REQUEST = 16,
-    FINISHED = 20,
-    DATA = 255
-} MsgType;
+const uint8_t CLIENT_HELLO = 1;
+const uint8_t SERVER_HELLO = 2;
+const uint8_t KEY_EXCHANGE_REQUEST = 16;
+const uint8_t FINISHED = 20;
+const uint8_t DATA = 255;
 
 typedef struct {
-    MsgType msg_type;
+    uint8_t msg_type; // Using uint8_t for one byte representation
     uint8_t padding;
     uint16_t msg_len;
 } SecurityHeader;

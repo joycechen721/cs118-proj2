@@ -19,7 +19,7 @@
 
 // Function prototypes
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in serveraddr);
-void *create_client_hello(int flag, uint8_t *client_nonce);
+void *create_client_hello(uint8_t *client_nonce);
 void *create_key_exchange(uint8_t *client_nonce, uint8_t *server_nonce, uint8_t *signed_nonce, size_t client_nonce_size, size_t signed_nonce_size, Certificate *server_cert, EVP_PKEY *ca_public_key, int sockfd, struct sockaddr_in serveraddr);
 
 int main(int argc, char *argv[])
@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
     //while loop for handling security stuff
     void *packets[2] = {nullptr};
     int handshake_left_ptr = 0;
-    packets[0] = create_client_hello(flag, nullptr);
+    packets[0] = create_client_hello(nullptr);
 
     uint8_t client_nonce_buf[32] = {0};
     memcpy(client_nonce_buf,((ClientHello*)packets[0])->client_nonce, 32);
@@ -76,6 +76,8 @@ int main(int argc, char *argv[])
         double elapsed_time = (now.tv_sec - handshake_timer_start.tv_sec) + (now.tv_usec - handshake_timer_start.tv_usec) / 1e6;
         if (elapsed_time >= RTO)
         {
+            
+            //retransmit left pointer
             break;
         }
         char handshake_buf[BUF_SIZE];
@@ -90,18 +92,18 @@ int main(int argc, char *argv[])
                 uint16_t server_cert_size = server_hello->cert_size;
                 uint8_t server_nonce[32] = {0};
                 memcpy(server_nonce, server_hello->server_nonce, 32);
-
-
                 Certificate server_cert = server_hello->server_cert;
-
                 uint8_t* client_nonce_signed = (uint8_t*)malloc(server_sig_size);
                 memcpy(client_nonce_signed, server_hello->client_sig, server_sig_size);
-                if (packets[1] != nullptr)
+                if (packets[1] == NULL) //if packets[1] is null then create key exchange and increment left so you can retransmit properly
                 {
                     packets[1] = create_key_exchange(client_nonce_buf, server_nonce, client_nonce_buf, sizeof(client_nonce_buf), server_sig_size, &server_cert, ec_ca_public_key, sockfd, serveraddr);
-                    
+                    handshake_left_ptr += 1; 
                 }
-
+            }
+            else if(handshake_left_ptr ==1 && bytes_recvd == sizeof(SecurityHeader)){
+                //then we are finished, nothing else to do
+                handshake_left_ptr +=1; 
             }
         }
     }
@@ -250,18 +252,14 @@ void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in servera
     sendto(sockfd, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
 }
 
-void *create_client_hello(int flag, uint8_t *client_nonce){
+void *create_client_hello(uint8_t *client_nonce){
     ClientHello* client_hello = (ClientHello*)malloc(sizeof(ClientHello));
     if (client_hello == nullptr) {
         fprintf(stderr, "Memory allocation failed for ClientHello.\n");
         return nullptr;
     }
     // Initialize comm_type based on flag
-    if (flag) {
-        client_hello->comm_type = 1; 
-    } else {
-        client_hello->comm_type = 0; 
-    }
+    client_hello->comm_type = 1; 
     // Initialize padding to zero
     client_hello->padding = 0; 
     // Generate client nonce
@@ -269,6 +267,9 @@ void *create_client_hello(int flag, uint8_t *client_nonce){
     generate_nonce(client_nonce_buf, 32); // fill nonce_buf with 32 bytes of data
     memcpy(client_hello->client_nonce, client_nonce_buf, 32);
 
+    client_hello -> header.msg_type = CLIENT_HELLO; 
+    client_hello -> header.padding = 0; 
+    client_hello -> header.msg_len = sizeof(client_hello) - sizeof(SecurityHeader); 
     return client_hello;
 }
 
@@ -328,5 +329,11 @@ void *create_key_exchange(uint8_t* client_nonce, uint8_t *server_nonce, uint8_t 
     key_exchange -> cert_size = temp_signature_size; 
     key_exchange -> client_cert = *client_cert; 
     memcpy(key_exchange->server_sig, signature, temp_signature_size); 
+
+
+    key_exchange -> header.msg_type = KEY_EXCHANGE_REQUEST; 
+    key_exchange -> header.padding = 0; 
+    key_exchange -> header.msg_len = sizeof(key_exchange) - sizeof(SecurityHeader); 
+    
     return key_exchange; 
 }
