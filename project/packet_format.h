@@ -44,7 +44,7 @@ typedef struct {
     uint16_t cert_size;
     uint8_t server_nonce[32];
     Certificate server_cert;
-    uint8_t client_sig[0]; 
+    uint8_t client_nonce[0];
 } ServerHello;
 
 typedef struct {
