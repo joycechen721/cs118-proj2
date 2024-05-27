@@ -20,23 +20,23 @@ typedef enum {
 
 typedef struct {
     MsgType msg_type;
-    uint8_t padding[2];
+    uint8_t padding;
     uint16_t msg_len;
 } SecurityHeader;
 
 typedef struct {
     SecurityHeader header;
     uint16_t key_len;
-    uint16_t padding[4];
-    uint32_t public_key;
-    uint32_t signature;
+    uint16_t padding;
+    uint8_t public_key[0];
+    uint8_t signature[0];
 } Certificate;
 
 typedef struct {
     SecurityHeader header;
     uint8_t comm_type;
-    uint16_t padding[4];
-    uint32_t client_nonce;
+    uint16_t padding;
+    uint8_t client_nonce[32];
 } ClientHello;
 
 typedef struct {
@@ -44,9 +44,9 @@ typedef struct {
     uint8_t comm_type;
     uint8_t sig_size;
     uint16_t cert_size;
-    uint32_t server_nonce;
-    uint32_t server_cert;
-    uint32_t client_sig;
+    uint8_t server_nonce[32];
+    Certificate server_cert;
+    uint8_t client_sig[0]; 
 } ServerHello;
 
 typedef struct {
@@ -54,17 +54,17 @@ typedef struct {
     uint8_t padding;
     uint8_t sig_size;
     uint16_t cert_size;
-    uint32_t client_cert;
-    uint32_t server_sig;
+    Certificate client_cert;
+    uint8_t server_sig[0];
 } KeyExchangeRequest;
 
 typedef struct {
     SecurityHeader header;
     uint16_t payload_size;
     uint16_t padding;
-    uint32_t init_vector;
-    uint32_t payload;
-    uint32_t mac_code;
+    uint8_t init_vector[16];
+    uint8_t payload[0];
+    uint8_t mac_code[32];
 } EncryptedData;
 
 typedef struct {
