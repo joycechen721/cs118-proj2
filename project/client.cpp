@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
             if (handshake_left_ptr == 0)
             { //recieved the server hello
                 ServerHello *server_hello = (ServerHello *)handshake_buf;
-                uint8_t sever_comm_type = server_hello->comm_type;
+                uint8_t server_comm_type = server_hello->comm_type;
                 uint8_t server_sig_size = server_hello->sig_size;
                 uint16_t server_cert_size = server_hello->cert_size;
                 uint8_t server_nonce[32] = {0};
@@ -320,7 +320,7 @@ void *create_key_exchange(uint8_t* client_nonce, uint8_t *server_nonce, uint8_t 
     // Sign the certificate
     unsigned char* certificate_signature = NULL;
     sign((char*)client_cert, sizeof(client_cert -> key_len) + sizeof(client_cert -> padding) + sizeof(client_cert -> public_key), (char*) certificate_signature);
-    memcpy(client_cert -> signature, certificate_signature, temp_signature_size); 
+    memcpy(client_cert -> signature, certificate_signature, temp_signature_size);
     //now create the keyexchage packet
     KeyExchangeRequest* key_exchange = (KeyExchangeRequest*) malloc(sizeof(KeyExchangeRequest) + pub_key_size + temp_signature_size + signature_size); //may be wrong on this
     memset(key_exchange, 0, sizeof(KeyExchangeRequest) + pub_key_size + temp_signature_size + signature_size); 

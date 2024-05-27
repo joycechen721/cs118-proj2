@@ -8,10 +8,11 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include "packet_format.h"
+#include "security.h"
 
 // helper functions
-int checkFiles(int flag, FILE *pkey, FILE *cert);
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in clientaddr);
+void *create_server_hello(int comm_type, uint8_t *client_nonce);
 
 // global variables
 #define BUF_SIZE 1024
@@ -24,21 +25,7 @@ int main(int argc, char *argv[]) {
     // Parse the arguments
     int flag = atoi(argv[1]);
     int port = atoi(argv[2]);
-    char *private_key_file = NULL;
-    char *certificate_file = NULL;
-    if (flag == 1){
-        private_key_file = argv[3];
-        certificate_file = argv[4];
-    }
-    // check files
-    FILE *pkey = fopen(private_key_file, "r");
-    FILE *cert = fopen(certificate_file, "r");
-    int result = checkFiles(flag, pkey, cert);
-    if (!result){
-        fprintf(stderr, "Flag not set or files not found. Exiting.\n");
-        return 1;
-    }
-        
+
     /* 1. Create socket */
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -59,6 +46,79 @@ int main(int argc, char *argv[]) {
     // Same information, but about client
     struct sockaddr_in clientaddr;
     socklen_t clientsize = sizeof(clientaddr);
+
+    // security stuff
+    if (flag == 1) {
+        char *private_key_file = argv[3];
+        char *certificate_file = argv[4];
+
+        // load private key & certificate
+        load_private_key(private_key_file);
+        load_certificate(certificate_file);
+
+        // security handshake
+        void *packets[2] = {nullptr};
+        int handshake_left_ptr = 0;
+
+        // initialize timer
+        bool handshake_timer_active = false;
+        struct timeval handshake_timer_start;
+
+        while (handshake_left_ptr < 2)
+        {
+            // receive client hello
+            char client_hello_buf[BUF_SIZE];
+            int bytes_recvd = recvfrom(sockfd, client_hello_buf, BUF_SIZE, 0, (struct sockaddr *)&clientaddr, &clientsize);
+            ClientHello *client_hello = (ClientHello *) client_hello_buf;
+            uint8_t client_comm_type = client_hello->comm_type;
+            uint8_t client_nonce[32] = {0};
+            memcpy(client_nonce, client_hello->client_nonce, 32);
+
+            // send server hello
+            create_server_hello(client_comm_type, client_nonce);
+
+            // start timer
+            struct timeval now;
+            gettimeofday(&now, NULL);
+            double elapsed_time = (now.tv_sec - handshake_timer_start.tv_sec) + (now.tv_usec - handshake_timer_start.tv_usec) / 1e6;
+            if (elapsed_time >= RTO) break;
+                    
+            // receive key exchange message
+            char exchange_buf[BUF_SIZE];
+            int bytes_recvd = recvfrom(sockfd, exchange_buf, BUF_SIZE, 0, (struct sockaddr *)&clientaddr, &clientsize);
+
+            if (bytes_recvd > 0)
+            {
+                if (handshake_left_ptr == 0)
+                {
+                    // extract data from key exchange msg
+                    KeyExchangeRequest client_key = (KeyExchangeRequest *) exchange_buf;
+                    uint16_t cert_size = ntohs(client_key->cert_size);
+                    Certificate client_cert = client_key->client_cert;
+
+                    // verify client certificate
+                    if (!verify((char*) client_cert, sizeof(Certificate), (char*)client_cert->signature, sizeof(client_cert->signature), public_key)) {
+                        fprintf(stderr, "Verification of client certificate or signature failed.\n");
+                        close(sockfd);
+                        exit(EXIT_FAILURE);
+                    }
+                    
+                    // verify client nonce
+                    if (!verify((char*) client_nonce, client_nonce_size, (char*) signed_nonce, signed_nonce_size, ec_peer_public_key)) {
+                        fprintf(stderr, "Verification of client certificate or signature failed.\n");
+                        close(sockfd);
+                        exit(EXIT_FAILURE);
+                    }
+
+                    // extract client public key from certificate
+                    load_peer_public_key(client_cert, cert_size);
+
+                    // derive shared secret
+                    derive_secret();
+                }
+            }
+        }
+    }
 
     // buffer for packets received from server
     Packet* server_window[MAX_PACKET_SEND_SIZE] = {NULL};
@@ -184,29 +244,38 @@ int main(int argc, char *argv[]) {
                 gettimeofday(&timer_start, NULL);
             }
         }
-
     }
     /* 8. You're done! Terminate the connection */     
     close(sockfd);
     return 0;
 }
 
-
-int checkFiles(int flag, FILE *pkey, FILE *cert) {
-    if (flag == 1) {
-        if (pkey == NULL || cert == NULL) {
-            fprintf(stderr, "One or more files (private key or certificate file) could not be opened.\n");
-            if (pkey != NULL) {
-                fclose(pkey);
-            }
-            if (cert != NULL) {
-                fclose(cert);
-            }
-            return 0; // File is not valid
-        }
-        return 1;
+// send ServerHello message back to client
+void *create_server_hello(int comm_type, uint8_t *client_nonce){
+    ServerHello* server_hello = (ServerHello*)malloc(sizeof(ServerHello));
+    if (server_hello == nullptr) {
+        fprintf(stderr, "Memory allocation failed for ServerHello.\n");
+        return nullptr;
     }
-    return 1;
+    // extract comm type
+    server_hello->comm_type = comm_type;
+    
+    // generate server nonce
+    char server_nonce_buf[32];
+    generate_nonce(server_nonce_buf, 32);
+    memcpy(server_hello->server_nonce, server_nonce_buf, 32);
+   
+    // certificate
+    server_hello->server_cert = certificate;
+
+    // sign client nonce
+    size_t sig_size = sign(client_nonce, sizeof(&client_nonce), NULL);
+    char signature[sig_size];
+    sign(client_nonce, sizeof(&client_nonce), signature)
+    memcpy(server_hello->client_nonce, signature, sig_size);
+    server_hello->sig_size = sig_size;
+
+    return server_hello;
 }
 
 // Sends cumulative ACK depending on the packet number received
