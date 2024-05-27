@@ -13,6 +13,7 @@
 // helper functions
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in clientaddr);
 void *create_server_hello(int comm_type, uint8_t *client_nonce);
+void *create_fin();
 
 // global variables
 #define BUF_SIZE 1024
@@ -61,43 +62,66 @@ int main(int argc, char *argv[]) {
         int handshake_left_ptr = 0;
 
         // initialize timer
-        bool handshake_timer_active = false;
         struct timeval handshake_timer_start;
+
+        bool received_client_hello = false;
+        bool received_key = false;
 
         while (handshake_left_ptr < 2)
         {
-            // receive client hello
-            char client_hello_buf[BUF_SIZE];
-            int bytes_recvd = recvfrom(sockfd, client_hello_buf, BUF_SIZE, 0, (struct sockaddr *)&clientaddr, &clientsize);
-            ClientHello *client_hello = (ClientHello *) client_hello_buf;
-            uint8_t client_comm_type = client_hello->comm_type;
-            uint8_t client_nonce[32] = {0};
-            memcpy(client_nonce, client_hello->client_nonce, 32);
+            if (received_key) {
+                struct timeval now;
+                gettimeofday(&now, NULL);
+                double elapsed_time = (now.tv_sec - handshake_timer_start.tv_sec) + (now.tv_usec - handshake_timer_start.tv_usec) / 1e6;
+                
+                // retransmit server fin
+                if (elapsed_time >= RTO) {
+                    Finished* server_fin = packets[handshake_left_ptr];
+                    int did_send = sendto(sockfd, server_fin, sizeof(server_fin), 0, (struct sockaddr *)&clientaddr, clientsize);
+                    if (did_send < 0) {
+                        perror("Failed to retransmit server fin msg");
+                    }
+                    // reset timer
+                    gettimeofday(&handshake_timer_start, NULL);
+                } 
+            }
 
-            // send server hello
-            create_server_hello(client_comm_type, client_nonce);
+            if (received_client_hello && !received_key) {
+                struct timeval now;
+                gettimeofday(&now, NULL);
+                double elapsed_time = (now.tv_sec - handshake_timer_start.tv_sec) + (now.tv_usec - handshake_timer_start.tv_usec) / 1e6;
+                
+                // retransmit server hello
+                if (elapsed_time >= RTO) {
+                    ServerHello* server_hello = packets[handshake_left_ptr];
+                    int did_send = sendto(sockfd, server_hello, sizeof(server_hello), 0, (struct sockaddr *)&clientaddr, clientsize);
+                    if (did_send < 0) {
+                        perror("Failed to retransmit server hello msg");
+                    }
+                    // reset timer
+                    gettimeofday(&handshake_timer_start, NULL);
+                }
 
-            // start timer
-            struct timeval now;
-            gettimeofday(&now, NULL);
-            double elapsed_time = (now.tv_sec - handshake_timer_start.tv_sec) + (now.tv_usec - handshake_timer_start.tv_usec) / 1e6;
-            if (elapsed_time >= RTO) break;
-                    
-            // receive key exchange message
-            char exchange_buf[BUF_SIZE];
-            int bytes_recvd = recvfrom(sockfd, exchange_buf, BUF_SIZE, 0, (struct sockaddr *)&clientaddr, &clientsize);
-
-            if (bytes_recvd > 0)
-            {
-                if (handshake_left_ptr == 0)
+                // receive client key
+                char exchange_buf[BUF_SIZE];
+                int bytes_recvd = recvfrom(sockfd, exchange_buf, BUF_SIZE, 0, (struct sockaddr *)&clientaddr, &clientsize);
+                if (bytes_recvd > 0)
                 {
-                    // extract data from key exchange msg
+                    // reset timer
+                    received_key = true;
+                    gettimeofday(&handshake_timer_start, NULL);
+                    handshake_left_ptr += 1;
+
+                    // extract data
                     KeyExchangeRequest client_key = (KeyExchangeRequest *) exchange_buf;
                     uint16_t cert_size = ntohs(client_key->cert_size);
                     Certificate client_cert = client_key->client_cert;
 
+                    // extract client public key from certificate
+                    load_peer_public_key(public_key, sizeof(public_key));
+
                     // verify client certificate
-                    if (!verify((char*) client_cert, sizeof(Certificate), (char*)client_cert->signature, sizeof(client_cert->signature), public_key)) {
+                    if (!verify((char*) client_cert, sizeof(Certificate), (char*)client_cert->signature, sizeof(client_cert->signature), ec_peer_public_key)) {
                         fprintf(stderr, "Verification of client certificate or signature failed.\n");
                         close(sockfd);
                         exit(EXIT_FAILURE);
@@ -110,11 +134,43 @@ int main(int argc, char *argv[]) {
                         exit(EXIT_FAILURE);
                     }
 
-                    // extract client public key from certificate
-                    load_peer_public_key(client_cert, cert_size);
-
                     // derive shared secret
                     derive_secret();
+
+                    // send fin
+                    Finished* server_fin = create_fin();
+                    packets[handshake_left_ptr] = server_fin;
+                    int did_send = sendto(sockfd, server_fin, sizeof(server_fin), 0, (struct sockaddr *)&clientaddr, clientsize);
+                    if (did_send < 0) {
+                        perror("Failed to send server fin msg");
+                    }
+
+                    // start timer
+                    gettimeofday(&handshake_timer_start, NULL);
+                }
+            }
+
+            // receive client hello
+            else if(!received_client_hello) {
+                char client_hello_buf[BUF_SIZE];
+                int bytes_recvd = recvfrom(sockfd, client_hello_buf, BUF_SIZE, 0, (struct sockaddr *)&clientaddr, &clientsize);
+                if (bytes_recvd > 0) {
+                    received_client_hello = true;
+                    ClientHello *client_hello = (ClientHello *) client_hello_buf;
+                    uint8_t client_comm_type = client_hello->comm_type;
+                    uint8_t client_nonce[32] = {0};
+                    memcpy(client_nonce, client_hello->client_nonce, 32);
+
+                    // send server hello
+                    ServerHello* server_hello = create_server_hello(client_comm_type, client_nonce);
+                    packets[handshake_left_ptr] = server_hello;
+                    int did_send = sendto(sockfd, server_hello, sizeof(server_hello), 0, (struct sockaddr *)&clientaddr, clientsize);
+                    if (did_send < 0) {
+                        perror("Failed to send server hello msg");
+                    }
+
+                    // start timer
+                    gettimeofday(&handshake_timer_start, NULL);
                 }
             }
         }
@@ -248,6 +304,12 @@ int main(int argc, char *argv[]) {
     /* 8. You're done! Terminate the connection */     
     close(sockfd);
     return 0;
+}
+
+// send fin message to client
+void *create_fin() {
+    Finished* server_fin = (Finished*)malloc(sizeof(Finished));
+    return server_fin;
 }
 
 // send ServerHello message back to client
