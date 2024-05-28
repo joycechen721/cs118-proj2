@@ -64,21 +64,26 @@ int main(int argc, char *argv[])
     void *packets[2] = {nullptr};
     int handshake_left_ptr = 0;
     packets[0] = create_client_hello(nullptr);
+    sendto(sockfd, packets[0], sizeof(ClientHello), 0, (struct sockaddr *)&serveraddr, serversize);
 
     uint8_t client_nonce_buf[32] = {0};
     memcpy(client_nonce_buf,((ClientHello*)packets[0])->client_nonce, 32);
     struct timeval handshake_timer_start;
     gettimeofday(&handshake_timer_start, NULL);
+    struct timeval now;
+    gettimeofday(&now, NULL);
     while (handshake_left_ptr < 2)
     {
-        struct timeval now;
-        gettimeofday(&now, NULL);
         double elapsed_time = (now.tv_sec - handshake_timer_start.tv_sec) + (now.tv_usec - handshake_timer_start.tv_usec) / 1e6;
         if (elapsed_time >= RTO)
         {
-            
-            //retransmit left pointer
-            break;
+            if(handshake_left_ptr == 0){
+                sendto(sockfd, packets[handshake_left_ptr], sizeof(ClientHello), 0, (struct sockaddr *)&serveraddr, serversize);
+            }
+            else{
+                sendto(sockfd, packets[handshake_left_ptr], sizeof(KeyExchangeRequest), 0, (struct sockaddr *)&serveraddr, serversize);
+            }
+            gettimeofday(&handshake_timer_start, NULL);
         }
         char handshake_buf[BUF_SIZE];
         int bytes_recvd = recvfrom(sockfd, handshake_buf, BUF_SIZE, 0, (struct sockaddr *)&serveraddr, &serversize);
@@ -86,6 +91,7 @@ int main(int argc, char *argv[])
         {
             if (handshake_left_ptr == 0)
             { //recieved the server hello
+                gettimeofday(&handshake_timer_start, NULL); //reset timer
                 ServerHello *server_hello = (ServerHello *)handshake_buf;
                 uint8_t server_comm_type = server_hello->comm_type;
                 uint8_t server_sig_size = server_hello->sig_size;
@@ -99,10 +105,10 @@ int main(int argc, char *argv[])
                 {
                     packets[1] = create_key_exchange(client_nonce_buf, server_nonce, client_nonce_buf, sizeof(client_nonce_buf), server_sig_size, &server_cert, ec_ca_public_key, sockfd, serveraddr);
                     handshake_left_ptr += 1; 
+                    sendto(sockfd, packets[handshake_left_ptr], sizeof(KeyExchangeRequest), 0, (struct sockaddr *)&serveraddr, serversize);
                 }
             }
             else if(handshake_left_ptr ==1 && bytes_recvd == sizeof(SecurityHeader)){
-                //then we are finished, nothing else to do
                 handshake_left_ptr +=1; 
             }
         }
