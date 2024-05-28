@@ -23,10 +23,9 @@ typedef struct {
 } SecurityHeader;
 
 typedef struct {
-    uint16_t key_len;
-    uint16_t padding;
-    uint8_t public_key[0];
-    uint8_t signature[0];
+    uint16_t key_len; // 2 bytes
+    uint16_t padding; // 2 bytes
+    uint8_t cert_data[];
 } Certificate;
 
 typedef struct {
@@ -43,7 +42,7 @@ typedef struct {
     uint16_t cert_size;
     uint8_t server_nonce[32];
     Certificate server_cert;
-    uint8_t client_nonce[0];
+    char* client_nonce;
 } ServerHello;
 
 typedef struct {

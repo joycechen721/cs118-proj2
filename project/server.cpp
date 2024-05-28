@@ -121,13 +121,29 @@ int main(int argc, char *argv[]) {
 
                     // extract client public key from certificate
                     load_peer_public_key(public_key, sizeof(public_key));
+                    
+                    // The public_key starts immediately after the padding field
+                    uint8_t *public_key = client_cert->data;
 
-                    // verify client certificate
-                    if (!verify((char*) &client_cert, sizeof(Certificate), (char*)(&client_cert)->signature, sizeof((&client_cert)->signature), ec_peer_public_key)) {
+                    // Calculate the length of the signature
+                    size_t signature_len = client_cert_size - (2 * sizeof(uint16_t) + key_len);
+
+                    // The signature starts immediately after the public_key
+                    uint8_t *signature = public_key + key_len;
+
+                    // Verify client certificate
+                    if (!verify((Certificate *)client_cert, client_cert_size, (char *)signature, signature_len, ec_peer_public_key)) {
                         fprintf(stderr, "Verification of client certificate failed.\n");
                         close(sockfd);
+                        // free(client_cert);
                         exit(EXIT_FAILURE);
                     }
+                    // // verify client certificate
+                    // if (!verify((char*) &client_cert, sizeof(Certificate), (char*)(&client_cert)->signature, sizeof((&client_cert)->signature), ec_peer_public_key)) {
+                    //     fprintf(stderr, "Verification of client certificate failed.\n");
+                    //     close(sockfd);
+                    //     exit(EXIT_FAILURE);
+                    // }
                     
                     // verify client nonce
                     if (!verify((char*) server_sig, sizeof(*server_sig), (char*) server_sig, sig_size, ec_peer_public_key)) {
@@ -318,36 +334,77 @@ Finished *create_fin() {
 }
 
 // send ServerHello message back to client
-ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce){
+ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce) {
     ServerHello* server_hello = (ServerHello*)malloc(sizeof(ServerHello));
     if (server_hello == nullptr) {
         fprintf(stderr, "Memory allocation failed for ServerHello.\n");
         return nullptr;
     }
-    server_hello -> header.msg_type = SERVER_HELLO; 
-    server_hello -> header.padding = 0; 
+
+    server_hello->header.msg_type = SERVER_HELLO; 
+    server_hello->header.padding = 0; 
 
     // set comm type
     server_hello->comm_type = comm_type;
     
     // generate server nonce
-    char server_nonce_buf[32];
+    char server_nonce_buf[32]; // 32 bytes for the nonce
     generate_nonce(server_nonce_buf, 32);
     memcpy(server_hello->server_nonce, server_nonce_buf, 32);
    
-    // certificate
-    Certificate* temp_cert = (Certificate*) certificate;
-    server_hello->server_cert = *temp_cert;
-    server_hello->cert_size = sizeof(certificate);
-    // sign client nonce
+    Certificate *temp_cert = (Certificate *)malloc(cert_size);
+    memcpy(temp_cert, certificate, cert_size);
+    temp_cert->key_len = ntohs(temp_cert->key_len);
+    int key_len = temp_cert->key_len;
+    uint8_t *public_key = temp_cert->cert_data;
+    size_t signature_len = cert_size - (2 * sizeof(uint16_t) + key_len);
+    uint8_t *signature = public_key + key_len;
+
+    // Now temp_cert, public_key, and signature are all correctly set up and can be used
+    // Print the public key and signature for demonstration
+    printf("Public Key: ");
+    for (int i = 0; i < key_len; i++) {
+        printf("%02X ", public_key[i]);
+    }
+    printf("\n");
+
+    printf("Signature: ");
+    for (size_t i = 0; i < signature_len; i++) {
+        printf("%02X ", signature[i]);
+    }
+    printf("\n");
+
+    // Remember to free temp_cert when done
+    // free(temp_cert);
+
+    // Print certificate data for debugging
+    printf("Server Certificate Data:\n");
+    printf("Key Length: %u\n", temp_cert->key_len);
+    printf("Padding: %u\n", temp_cert->padding);
+    // printf("Public Key: %s\n", temp_cert->public_key); // Assuming public_key is a null-terminated string
+    // printf("public key len: %ld\n", sizeof(temp_cert->public_key)); //
+    // printf("cert sig len: %ld\n", sizeof(temp_cert->public_key)); // Assuming public_key is a null-terminated string
+    // printf("Size of Certificate: %zu\n", sizeof(Certificate));
+    // printf("Signature Length: %zu\n", signature_len);
+
+    free(temp_cert);
+    server_hello->cert_size = (uint16_t) cert_size;
+
+
+    // Sign client nonce
     size_t sig_size = sign((char*)client_nonce, sizeof(*client_nonce), NULL);
-    char *signature = (char*)malloc(sig_size);
-    sign((char*)client_nonce, sizeof(*client_nonce), signature);
-    memcpy(server_hello->client_nonce, signature, sig_size);
+    server_hello->client_nonce = (char*)malloc(sig_size);
+    sign((char*)client_nonce, sizeof(*client_nonce), server_hello->client_nonce);
+    if (server_hello->client_nonce == nullptr) {
+        fprintf(stderr, "Memory allocation failed for client nonce signature.\n");
+        // free(server_hello->server_cert->public_key);
+        // free(server_hello->server_cert->signature);
+        // free(server_hello);
+        return nullptr;
+    }
     server_hello->sig_size = sig_size;
-    printf("%ld\n", sizeof(*temp_cert));
-    free(signature);
-    server_hello -> header.msg_len = sizeof(server_hello) - sizeof(SecurityHeader);
+
+    server_hello->header.msg_len = sizeof(ServerHello) - sizeof(SecurityHeader);
 
     return server_hello;
 }
