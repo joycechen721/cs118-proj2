@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
                 // retransmit server hello
                 if (elapsed_time >= RTO) {
                     ServerHello* server_hello = (ServerHello*) packets[handshake_left_ptr];
-                    printf("not sure%ld\n", sizeof(server_hello));
+                    printf("server hello size: %ld\n", sizeof(server_hello));
                     int did_send = sendto(sockfd, server_hello, sizeof(server_hello), 0, (struct sockaddr *)&clientaddr, clientsize);
                     if (did_send < 0) {
                         perror("Failed to retransmit server hello msg");
@@ -114,12 +114,14 @@ int main(int argc, char *argv[]) {
 
                     // extract data
                     KeyExchangeRequest* client_key = (KeyExchangeRequest *) exchange_buf;
-                    uint16_t client_cert_size = ntohs(client_key->cert_size);
+                    uint16_t client_cert_size = client_key->cert_size;
+                    printf("cert size: %d\n", client_cert_size);
                     // Extract certificate from client_key -> data
-                    char buffer[client_cert_size];
+                    uint8_t* buffer = (uint8_t*)malloc(client_cert_size);
                     memcpy(buffer, client_key->data, client_cert_size);
                     Certificate* client_cert = (Certificate *) buffer;
                     uint8_t sig_size = ntohs(client_key->sig_size);
+                    printf("sig size: %d\n", sig_size);
                     uint8_t server_sig[32] = {0};
                     memcpy(server_sig, client_key->data + sig_size, 32);
 
@@ -132,7 +134,7 @@ int main(int argc, char *argv[]) {
                     uint8_t *signature = public_key + key_len;
 
                     // verify client certificate
-                    // int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* authority) {    
+                    // int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* authority)
 
                     if (!verify((char*) public_key, key_len, (char*) signature, signature_len, ec_peer_public_key)) {
                         fprintf(stderr, "Verification of client certificate failed.\n");
@@ -177,7 +179,9 @@ int main(int argc, char *argv[]) {
                     // send server hello
                     ServerHello* server_hello = create_server_hello(client_comm_type, client_nonce);
                     packets[handshake_left_ptr] = server_hello;
-                    int did_send = sendto(sockfd, server_hello, sizeof(server_hello), 0, (struct sockaddr *)&clientaddr, clientsize);
+                    
+                    int did_send = sendto(sockfd, server_hello, sizeof(ServerHello) + server_hello->cert_size + server_hello->sig_size, 0, (struct sockaddr *)&clientaddr, clientsize);
+                    
                     if (did_send < 0) {
                         perror("Failed to send server hello msg");
                     }
@@ -356,19 +360,24 @@ ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce){
     // uint8_t *public_key = temp_cert->data;
     // size_t signature_len = cert_size - (2 * sizeof(uint16_t) + key_len);
     // uint8_t *signature = public_key + key_len; 
-    memcpy(server_hello->data, &certificate, cert_size);
+    memcpy(server_hello->data, certificate, cert_size);
     server_hello->cert_size = cert_size;
     // printf("Server Certificate Data:\n");
     // printf("Key Length: %u\n", temp_cert->key_len);
     // printf("Padding: %u\n", temp_cert->padding);
     // printf("Data: %hhn\n", temp_cert->data);
 
+    for (size_t i = 0; i < cert_size; ++i) {
+        printf("%02X ", server_hello->data[i]);
+    }
+    printf("\n");
+
     // signature client nonce
     size_t sig_size = sign((char*)client_nonce, sizeof(*client_nonce), NULL);
     char *server_nonce_sig = (char*)malloc(sig_size);
     sign((char*)client_nonce, sizeof(*client_nonce), server_nonce_sig);
     memcpy(server_hello->data + cert_size, server_nonce_sig, sig_size);
-    printf("data size %ld", cert_size + sig_size);    
+    printf("data size %ld\n", cert_size + sig_size);    
 
     server_hello->sig_size = sig_size;
     free(server_nonce_sig);
