@@ -12,8 +12,8 @@
 
 // helper functions
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in clientaddr);
-void *create_server_hello(int comm_type, uint8_t *client_nonce);
-void *create_fin();
+ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce);
+Finished *create_fin();
 
 // global variables
 #define BUF_SIZE 1024
@@ -76,7 +76,7 @@ int main(int argc, char *argv[]) {
                 
                 // retransmit server fin
                 if (elapsed_time >= RTO) {
-                    Finished* server_fin = packets[handshake_left_ptr];
+                    Finished* server_fin = (Finished*) packets[handshake_left_ptr];
                     int did_send = sendto(sockfd, server_fin, sizeof(server_fin), 0, (struct sockaddr *)&clientaddr, clientsize);
                     if (did_send < 0) {
                         perror("Failed to retransmit server fin msg");
@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
                 
                 // retransmit server hello
                 if (elapsed_time >= RTO) {
-                    ServerHello* server_hello = packets[handshake_left_ptr];
+                    ServerHello* server_hello = (ServerHello*) packets[handshake_left_ptr];
                     int did_send = sendto(sockfd, server_hello, sizeof(server_hello), 0, (struct sockaddr *)&clientaddr, clientsize);
                     if (did_send < 0) {
                         perror("Failed to retransmit server hello msg");
@@ -113,23 +113,26 @@ int main(int argc, char *argv[]) {
                     handshake_left_ptr += 1;
 
                     // extract data
-                    KeyExchangeRequest client_key = (KeyExchangeRequest *) exchange_buf;
+                    KeyExchangeRequest* client_key = (KeyExchangeRequest *) exchange_buf;
                     uint16_t cert_size = ntohs(client_key->cert_size);
                     Certificate client_cert = client_key->client_cert;
+                    uint8_t sig_size = ntohs(client_key->sig_size);
+                    uint8_t server_sig[32] = {0};
+                    memcpy(server_sig, client_key->server_sig, 32);
 
                     // extract client public key from certificate
                     load_peer_public_key(public_key, sizeof(public_key));
 
                     // verify client certificate
-                    if (!verify((char*) client_cert, sizeof(Certificate), (char*)client_cert->signature, sizeof(client_cert->signature), ec_peer_public_key)) {
-                        fprintf(stderr, "Verification of client certificate or signature failed.\n");
+                    if (!verify((char*) &client_cert, sizeof(Certificate), (char*)(&client_cert)->signature, sizeof((&client_cert)->signature), ec_peer_public_key)) {
+                        fprintf(stderr, "Verification of client certificate failed.\n");
                         close(sockfd);
                         exit(EXIT_FAILURE);
                     }
                     
                     // verify client nonce
-                    if (!verify((char*) client_nonce, client_nonce_size, (char*) signed_nonce, signed_nonce_size, ec_peer_public_key)) {
-                        fprintf(stderr, "Verification of client certificate or signature failed.\n");
+                    if (!verify((char*) server_sig, sizeof(*server_sig), (char*) server_sig, sig_size, ec_peer_public_key)) {
+                        fprintf(stderr, "Verification of client signature failed.\n");
                         close(sockfd);
                         exit(EXIT_FAILURE);
                     }
@@ -307,19 +310,25 @@ int main(int argc, char *argv[]) {
 }
 
 // send fin message to client
-void *create_fin() {
+Finished *create_fin() {
     Finished* server_fin = (Finished*)malloc(sizeof(Finished));
+    server_fin -> header.msg_type = FINISHED; 
+    server_fin -> header.padding = 0; 
+    server_fin -> header.msg_len = sizeof(server_fin) - sizeof(SecurityHeader); 
     return server_fin;
 }
 
 // send ServerHello message back to client
-void *create_server_hello(int comm_type, uint8_t *client_nonce){
+ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce){
     ServerHello* server_hello = (ServerHello*)malloc(sizeof(ServerHello));
     if (server_hello == nullptr) {
         fprintf(stderr, "Memory allocation failed for ServerHello.\n");
         return nullptr;
     }
-    // extract comm type
+    server_hello -> header.msg_type = SERVER_HELLO; 
+    server_hello -> header.padding = 0; 
+
+    // set comm type
     server_hello->comm_type = comm_type;
     
     // generate server nonce
@@ -328,14 +337,16 @@ void *create_server_hello(int comm_type, uint8_t *client_nonce){
     memcpy(server_hello->server_nonce, server_nonce_buf, 32);
    
     // certificate
-    server_hello->server_cert = certificate;
-
+    Certificate* temp_cert = (Certificate*) certificate;
+    server_hello->server_cert = *temp_cert;
     // sign client nonce
-    size_t sig_size = sign(client_nonce, sizeof(&client_nonce), NULL);
+    size_t sig_size = sign((char*)client_nonce, sizeof(*client_nonce), NULL);
     char signature[sig_size];
-    sign(client_nonce, sizeof(&client_nonce), signature)
+    sign((char*)client_nonce, sizeof(*client_nonce), signature);
     memcpy(server_hello->client_nonce, signature, sig_size);
     server_hello->sig_size = sig_size;
+
+    server_hello -> header.msg_len = sizeof(server_hello) - sizeof(SecurityHeader);
 
     return server_hello;
 }

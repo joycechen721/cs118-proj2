@@ -94,7 +94,7 @@ int main(int argc, char *argv[])
                 memcpy(server_nonce, server_hello->server_nonce, 32);
                 Certificate server_cert = server_hello->server_cert;
                 uint8_t* client_nonce_signed = (uint8_t*)malloc(server_sig_size);
-                memcpy(client_nonce_signed, server_hello->client_sig, server_sig_size);
+                memcpy(client_nonce_signed, server_hello->client_nonce, server_sig_size);
                 if (packets[1] == NULL) //if packets[1] is null then create key exchange and increment left so you can retransmit properly
                 {
                     packets[1] = create_key_exchange(client_nonce_buf, server_nonce, client_nonce_buf, sizeof(client_nonce_buf), server_sig_size, &server_cert, ec_ca_public_key, sockfd, serveraddr);
