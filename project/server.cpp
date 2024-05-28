@@ -9,7 +9,6 @@
 #include <fcntl.h>
 #include "packet_format.h"
 #include "security.h"
-
 // helper functions
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in clientaddr);
 ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce);
@@ -339,13 +338,15 @@ ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce){
     // certificate
     Certificate* temp_cert = (Certificate*) certificate;
     server_hello->server_cert = *temp_cert;
+    server_hello->cert_size = sizeof(certificate);
     // sign client nonce
     size_t sig_size = sign((char*)client_nonce, sizeof(*client_nonce), NULL);
-    char signature[sig_size];
+    char *signature = (char*)malloc(sig_size);
     sign((char*)client_nonce, sizeof(*client_nonce), signature);
     memcpy(server_hello->client_nonce, signature, sig_size);
     server_hello->sig_size = sig_size;
-
+    printf("%ld\n", sizeof(*temp_cert));
+    free(signature);
     server_hello -> header.msg_len = sizeof(server_hello) - sizeof(SecurityHeader);
 
     return server_hello;

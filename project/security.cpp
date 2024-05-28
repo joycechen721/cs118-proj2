@@ -116,17 +116,20 @@ size_t sign(char* data, size_t size, char* signature) {
 }
 
 int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* authority) {
+    printf("HELLO\n");
     EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
     if (!mdctx) {
+        perror("error1");
         return 0; 
     }
     if (EVP_DigestVerifyInit(mdctx, NULL, EVP_sha256(), NULL, authority) != 1) {
-        // Handle error: failed to initialize verification
+        perror("error2");
         EVP_MD_CTX_free(mdctx);
         return 0; 
     }
     if (EVP_DigestVerifyUpdate(mdctx, data, size) != 1) {
         // Handle error: failed to update verification context
+        perror("error3");
         EVP_MD_CTX_free(mdctx);
         return 0;
     }

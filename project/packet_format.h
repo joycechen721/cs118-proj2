@@ -23,7 +23,6 @@ typedef struct {
 } SecurityHeader;
 
 typedef struct {
-    SecurityHeader header;
     uint16_t key_len;
     uint16_t padding;
     uint8_t public_key[0];

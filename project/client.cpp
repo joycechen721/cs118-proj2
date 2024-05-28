@@ -89,8 +89,7 @@ int main(int argc, char *argv[])
         int bytes_recvd = recvfrom(sockfd, handshake_buf, BUF_SIZE, 0, (struct sockaddr *)&serveraddr, &serversize);
         if (bytes_recvd > 0)
         {
-            if (handshake_left_ptr == 0)
-            { //recieved the server hello
+            if (handshake_left_ptr == 0){ //received the server hello
                 gettimeofday(&handshake_timer_start, NULL); //reset timer
                 ServerHello *server_hello = (ServerHello *)handshake_buf;
                 uint8_t server_comm_type = server_hello->comm_type;
@@ -98,16 +97,41 @@ int main(int argc, char *argv[])
                 uint16_t server_cert_size = server_hello->cert_size;
                 uint8_t server_nonce[32] = {0};
                 memcpy(server_nonce, server_hello->server_nonce, 32);
-                Certificate server_cert = server_hello->server_cert;
+
+                // Check if the server certificate size is valid
+                if (server_cert_size == 0) {
+                    fprintf(stderr, "Invalid server certificate size: %u\n", server_cert_size);
+                    close(sockfd);
+                    exit(EXIT_FAILURE);
+                }
+
+                // Allocate memory for the server certificate
+                Certificate* server_cert = (Certificate*)malloc(server_cert_size);
+
+                // Correct way to copy the certificate data
+                memcpy(server_cert, &server_hello->server_cert, server_cert_size);
+                if (server_cert -> public_key == NULL) {
+                    fprintf(stderr, "Memory allocation failed for server certificate.\n");
+                    close(sockfd);
+                    exit(EXIT_FAILURE);
+                }
+                // Print the server certificate size for debugging
                 uint8_t* client_nonce_signed = (uint8_t*)malloc(server_sig_size);
+                if (client_nonce_signed == NULL) {
+                    fprintf(stderr, "Memory allocation failed for client nonce signed.\n");
+                    close(sockfd);
+                    exit(EXIT_FAILURE);
+                }
                 memcpy(client_nonce_signed, server_hello->client_nonce, server_sig_size);
+
                 if (packets[1] == NULL) //if packets[1] is null then create key exchange and increment left so you can retransmit properly
                 {
-                    packets[1] = create_key_exchange(client_nonce_buf, server_nonce, client_nonce_buf, sizeof(client_nonce_buf), server_sig_size, &server_cert, ec_ca_public_key, sockfd, serveraddr);
+                    packets[1] = create_key_exchange(client_nonce_buf, server_nonce, client_nonce_signed, 32, server_sig_size, server_cert, ec_ca_public_key, sockfd, serveraddr);
                     handshake_left_ptr += 1; 
                     sendto(sockfd, packets[handshake_left_ptr], sizeof(KeyExchangeRequest), 0, (struct sockaddr *)&serveraddr, serversize);
                 }
             }
+
             else if(handshake_left_ptr ==1 && bytes_recvd == sizeof(SecurityHeader)){
                 handshake_left_ptr +=1; 
             }
@@ -281,17 +305,22 @@ void *create_client_hello(uint8_t *client_nonce){
 
 void *create_key_exchange(uint8_t* client_nonce, uint8_t *server_nonce, uint8_t *signed_nonce, size_t client_nonce_size, size_t signed_nonce_size, Certificate* server_cert, EVP_PKEY* ca_public_key, int sockfd, struct sockaddr_in serveraddr) {
     ec_ca_public_key = ca_public_key; 
+
+    printf("server public key: %s, size: %ld", (char*) server_cert->public_key, sizeof(server_cert->public_key));
+
     load_peer_public_key((char*)server_cert->public_key, server_cert->key_len);
-    
+    if(ec_peer_public_key == NULL){
+        printf("errrrr\n");
+    }
     // Verify server certificate and signature
     if (!verify((char*) server_cert, sizeof(Certificate), (char*)server_cert -> signature, sizeof(server_cert -> signature), ca_public_key)) {
-        fprintf(stderr, "Verification of server certificate or signature failed.\n");
+        fprintf(stderr, "Verification of server certificate failed.\n");
         close(sockfd);
         exit(EXIT_FAILURE);
     }
     
-    if (!verify((char*) client_nonce, client_nonce_size, (char*) signed_nonce, signed_nonce_size, ec_peer_public_key)) {
-        fprintf(stderr, "Verification of server certificate or signature failed.\n");
+    if (!verify((char*) client_nonce, client_nonce_size, (char*)signed_nonce, signed_nonce_size, ec_peer_public_key)) {
+        fprintf(stderr, "Verification of signature failed.\n");
         close(sockfd);
         exit(EXIT_FAILURE);
     }
