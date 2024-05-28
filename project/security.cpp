@@ -115,8 +115,7 @@ size_t sign(char* data, size_t size, char* signature) {
     return sig_size;
 }
 
-int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* authority) {
-    printf("HELLO\n");
+int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* authority) {    
     EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
     if (!mdctx) {
         perror("error1");

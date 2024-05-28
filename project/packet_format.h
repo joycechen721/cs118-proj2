@@ -25,8 +25,8 @@ typedef struct {
 typedef struct {
     uint16_t key_len;
     uint16_t padding;
-    uint8_t public_key[0];
-    uint8_t signature[0];
+    uint8_t data[0];
+    // uint8_t signature[0];
 } Certificate;
 
 typedef struct {
@@ -42,8 +42,9 @@ typedef struct {
     uint8_t sig_size;
     uint16_t cert_size;
     uint8_t server_nonce[32];
-    Certificate server_cert;
-    uint8_t client_nonce[0];
+    uint8_t data[0];
+    // Certificate server_cert; //variable
+    // uint8_t client_nonce[0];
 } ServerHello;
 
 typedef struct {
@@ -51,8 +52,9 @@ typedef struct {
     uint8_t padding;
     uint8_t sig_size;
     uint16_t cert_size;
-    Certificate client_cert;
-    uint8_t server_sig[0];
+    uint8_t data[0];
+    // Certificate client_cert; //variable
+    // uint8_t server_sig[0];
 } KeyExchangeRequest;
 
 typedef struct {
