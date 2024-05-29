@@ -20,7 +20,7 @@
 // Function prototypes
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in serveraddr);
 void *create_client_hello(uint8_t *client_nonce);
-KeyExchangeRequest *create_key_exchange(char *client_nonce, char *server_nonce, char *signed_nonce, size_t signed_nonce_size, Certificate *server_cert, EVP_PKEY *ca_public_key, int sockfd, struct sockaddr_in serveraddr);
+KeyExchangeRequest *create_key_exchange(char *client_nonce, char *server_nonce, char *signed_nonce, size_t signed_nonce_size, Certificate *server_cert, int sockfd, struct sockaddr_in serveraddr);
 
 int main(int argc, char *argv[])
 {
@@ -97,16 +97,16 @@ int main(int argc, char *argv[])
 
                 // extract server certificate
                 uint16_t server_cert_size = server_hello->cert_size;
-                uint8_t raw_cert_buf[server_cert_size];
-                memcpy(raw_cert_buf, server_hello->data, server_cert_size);
-                // ERRROR HERE ASK OMAR
-                Certificate* server_cert = (Certificate*) raw_cert_buf;
                 // Check if the server certificate size is valid
                 if (server_cert_size == 0) {
                     fprintf(stderr, "Invalid server certificate size: %u\n", server_cert_size);
                     close(sockfd);
                     exit(EXIT_FAILURE);
                 }
+                uint8_t raw_cert_buf[server_cert_size];
+                memcpy(raw_cert_buf, server_hello->data, server_cert_size);
+                // ERRROR HERE ASK OMAR
+                Certificate* server_cert = (Certificate*) raw_cert_buf;
 
                 int key_len = ntohs(server_cert->key_len);
                 printf("certificate key length %d\n", key_len);
@@ -139,17 +139,28 @@ int main(int argc, char *argv[])
                         (char*) client_nonce_signed, 
                         server_sig_size,
                         server_cert, 
-                        ec_ca_public_key, 
                         sockfd, 
                         serveraddr
                     );
-                    
+
                     handshake_left_ptr += 1; 
-                    sendto(sockfd, key_xchange, sizeof(KeyExchangeRequest) + key_xchange->cert_size + key_xchange->sig_size, 0, (struct sockaddr *)&serveraddr, serversize);
+                    sendto(sockfd, key_xchange, sizeof(KeyExchangeRequest) + sizeof(Certificate) + key_xchange->cert_size + key_xchange->sig_size, 0, (struct sockaddr *)&serveraddr, serversize);
                 }
             }
 
             else if(handshake_left_ptr ==1 && bytes_recvd == sizeof(SecurityHeader)){
+                // Print the contents of secret
+                    if (secret != NULL) {
+                        for (size_t i = 0; i < sizeof(secret); ++i) {
+                            printf("%02x ", (unsigned char)secret[i]);
+                        }
+                        printf("\n");
+
+
+                        printf("secret: %s\n", secret);
+                    } else {
+                        printf("secret is NULL\n");
+                    }
                 handshake_left_ptr +=1; 
             }
         }
@@ -320,37 +331,39 @@ void *create_client_hello(uint8_t *client_nonce){
     return client_hello;
 }
 
-KeyExchangeRequest *create_key_exchange(char* client_nonce, char *server_nonce, char *signed_nonce, size_t signed_nonce_size, Certificate* server_cert, EVP_PKEY* ca_public_key, int sockfd, struct sockaddr_in serveraddr) {
-    ec_ca_public_key = ca_public_key; 
-
-
+KeyExchangeRequest *create_key_exchange(char* client_nonce, char *server_nonce, char *signed_nonce, size_t signed_nonce_size, Certificate* server_cert, int sockfd, struct sockaddr_in serveraddr) {
     load_peer_public_key((char*) server_cert->data, server_cert->key_len);
     if(ec_peer_public_key == NULL){
         printf("errrrrm what the sigma\n");
     }
+
     uint16_t key_len = server_cert -> key_len;
-    uint8_t *public_key = server_cert -> data;
+    uint8_t *server_public_key = server_cert -> data;
     size_t signature_len = cert_size - (2 * sizeof(uint16_t) + key_len);
-    uint8_t *signature = public_key + key_len;
+    uint8_t *signature = server_public_key + key_len;
 
     // Verify server signature inside of the certificate
-    if (!verify((char *) public_key, key_len, (char*) signature, signature_len, ca_public_key)) {
+    if (!verify((char *) server_public_key, key_len, (char*) signature, signature_len, ec_ca_public_key)) {
         fprintf(stderr, "Verification of server certificate failed.\n");
         close(sockfd);
         exit(EXIT_FAILURE);
     }
+
+    printf("VERIFY SERVER CERT SUCCESS \n");
     
     if (!verify((char*) client_nonce, 32, (char*)signed_nonce, signed_nonce_size, ec_peer_public_key)) {
         fprintf(stderr, "Verification of signature failed.\n");
         close(sockfd);
         exit(EXIT_FAILURE);
     }
+
+    printf("VERIFY SERVER SIG SUCCESS \n");
+
     generate_private_key(); //now private key is stored in private key var 
     derive_public_key(); //now public key is stored in variable "public_key"
     derive_secret();  //now secret variable has the private key
     
     //now we need to create a certificate and sign the certificate with our own private key
-
 
     // Calculate the size needed for the public key signature
     size_t self_signature_size = sign((char*)public_key, sizeof(public_key), NULL);
@@ -363,32 +376,19 @@ KeyExchangeRequest *create_key_exchange(char* client_nonce, char *server_nonce, 
     }
     // Initialize client_cert
     client_cert -> key_len = pub_key_size; 
+    printf("pub key size: %d\n", pub_key_size);
     client_cert -> padding = 0;
     memcpy(client_cert->data, public_key, pub_key_size); 
-    
-    char self_signature[self_signature_size];
-    sign((char*)public_key, sizeof(public_key), self_signature);
-    memcpy(client_cert->data + pub_key_size, self_signature, self_signature_size); 
 
-    // // Sign the certificate
-    // unsigned char* certificate_signature = NULL;
-    // sign((char*)client_cert, sizeof(client_cert -> key_len) + sizeof(client_cert -> padding) + sizeof(client_cert -> public_key), (char*) certificate_signature);
-    // memcpy(client_cert -> signature, certificate_signature, temp_signature_size);
+    size_t self_sig_size = sign((char*)public_key, sizeof(public_key), NULL);
+    char *self_signature = (char*)malloc(self_sig_size);
+    sign((char*)public_key, sizeof(public_key), self_signature);
+    memcpy(client_cert->data + pub_key_size, self_signature, self_sig_size); 
 
     //now we have to sign the server nonce
-    char* nonce_signature = NULL;
-    size_t nonce_signature_size = 0; 
-
-    // Allocate memory for the signature buffer
-    nonce_signature = (char*)malloc(255); // Assuming maximum signature size is 255 bytes
-    if (nonce_signature == NULL) {
-        fprintf(stderr, "Memory allocation failed for signature buffer.\n");
-        close(sockfd);
-        exit(EXIT_FAILURE);
-    }
-
-    // Call the sign function
-    nonce_signature_size = sign((char*)server_nonce, sizeof(server_nonce), nonce_signature);
+    size_t nonce_signature_size = sign((char*)server_nonce, sizeof(server_nonce), NULL);
+    char *nonce_signature = (char*)malloc(nonce_signature_size);
+    sign((char*)client_nonce, sizeof(*client_nonce), nonce_signature);
 
     if (nonce_signature == NULL) {
         fprintf(stderr, "Failed to sign the server nonce.\n");
@@ -397,11 +397,16 @@ KeyExchangeRequest *create_key_exchange(char* client_nonce, char *server_nonce, 
     }
 
     //now create the keyexchage packet
-    KeyExchangeRequest* key_exchange = (KeyExchangeRequest*) malloc(sizeof(KeyExchangeRequest) + sizeof(Certificate)  + pub_key_size + self_signature_size + nonce_signature_size);
+    KeyExchangeRequest* key_exchange = (KeyExchangeRequest*) malloc(sizeof(KeyExchangeRequest) + sizeof(Certificate) + pub_key_size + self_signature_size + nonce_signature_size);
+    // size of signature & certificate
     key_exchange -> sig_size = nonce_signature_size; 
-    key_exchange -> cert_size = self_signature_size;
+    key_exchange -> cert_size = sizeof(Certificate) + self_signature_size + pub_key_size;
+    printf("cert size: %ld\n", sizeof(Certificate) + self_signature_size + pub_key_size);
+    // copy certificate into data
     memcpy(key_exchange->data, client_cert, sizeof(Certificate) + pub_key_size + self_signature_size); 
-    memcpy(key_exchange->data + cert_size, nonce_signature, nonce_signature_size); 
+    printf("nonce signature size: %ld\n", nonce_signature_size);
+    // copy signature of server nonce into data
+    memcpy(key_exchange->data + key_exchange -> cert_size, nonce_signature, nonce_signature_size); 
     
     key_exchange -> header.msg_type = KEY_EXCHANGE_REQUEST; 
     key_exchange -> header.padding = 0; 
