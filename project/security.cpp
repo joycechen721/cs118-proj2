@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include "security.h"
 
+#include <errno.h>
+
 EVP_PKEY* ec_priv_key = NULL;
 EVP_PKEY* ec_peer_public_key = NULL;
 EVP_PKEY* ec_ca_public_key = NULL; 
@@ -123,6 +125,7 @@ int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* 
     }
     if (EVP_DigestVerifyInit(mdctx, NULL, EVP_sha256(), NULL, authority) != 1) {
         perror("error2");
+        fprintf(stderr, "%d", errno);
         EVP_MD_CTX_free(mdctx);
         return 0; 
     }

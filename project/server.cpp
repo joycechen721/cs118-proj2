@@ -23,6 +23,7 @@ Packet *create_fin();
 #define RTO 1 // retransmission timer
 
 int main(int argc, char *argv[]) {
+
     // Parse the arguments
     int flag = atoi(argv[1]);
     int port = atoi(argv[2]);
@@ -107,7 +108,10 @@ int main(int argc, char *argv[]) {
                 // send server hello
                 Packet* server_hello = create_server_hello(client_comm_type, client_nonce);
                 input_window[1] = server_hello;
-                sendto(sockfd, input_window[1], sizeof(Packet) + server_hello -> payload_size, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
+                ServerHello* srvh = (ServerHello*) input_window[1] -> data; 
+                printf("server hello size %ld\n", sizeof(Packet) + server_hello -> payload_size);
+                // Send ACK
+                sendto(sockfd, server_hello, sizeof(Packet) + server_hello -> payload_size, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
             }
             else if(server_window[2] != NULL && input_window[2] == NULL){ //this means we have recieved key exchange, need to parse it
                 Packet* key_exchange_packet = server_window[2];
@@ -126,10 +130,19 @@ int main(int argc, char *argv[]) {
                 // int key_len = ntohs(client_cert->key_len);
                 uint8_t *client_public_key = client_cert->data;
                 load_peer_public_key((char*) client_cert->data, client_cert->key_len);
-                if(ec_peer_public_key == NULL){
-                    printf("errrrrm sdfkadsjlk the sigma\n");
+                FILE *file = fopen("public_key.txt", "w");
+                if (file == NULL) {
+                    fprintf(stderr, "Error opening file.\n");
+                    return 1; // Or handle the error appropriately
                 }
-                uint8_t *signature = client_cert->data + key_len - 1;
+
+                // Write the data into the file
+                for (size_t i = 0; i < client_cert->key_len; i++) {
+                    fprintf(file, "%02hhX ", (unsigned char)client_cert->data[i]);
+                }
+                fclose(file);
+
+                uint8_t *signature = client_cert->data + key_len-1;
                 size_t signature_len = client_cert_size - (sizeof(uint16_t) + sizeof(uint16_t) + key_len);
                 // verify client certificate
                 // int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* authority)
@@ -138,6 +151,8 @@ int main(int argc, char *argv[]) {
                     close(sockfd);
                     exit(EXIT_FAILURE);
                 } 
+
+
                 
                 // verify client nonce
                 if (!verify((char*) server_sig, sizeof(*server_sig), (char*) server_sig, sig_size, ec_peer_public_key)) {
@@ -312,11 +327,10 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
     memcpy(server_hello->data, certificate, cert_size);
     server_hello->cert_size = cert_size;
 
-    // signature client nonce
     char *server_nonce_sig = (char*)malloc(sig_size);
     sign((char*)client_nonce, sizeof(*client_nonce), server_nonce_sig);
     memcpy(server_hello->data + cert_size, server_nonce_sig, sig_size);
-    printf("data size %ld\n", cert_size + sig_size);    
+    printf("data size %ld\n", cert_size + sig_size);   
 
     server_hello->sig_size = sig_size;
     free(server_nonce_sig);
@@ -334,6 +348,7 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
     memset(packet->padding, 0, sizeof(packet->padding));
     packet->payload_size = server_hello_size;
     memcpy(packet->data, server_hello, server_hello_size);
+    free(server_hello);
     return packet;
 }
 
