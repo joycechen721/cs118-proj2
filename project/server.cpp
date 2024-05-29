@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include "packet_format.h"
 #include "security.h"
+
 // helper functions
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in clientaddr);
 ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce);
@@ -135,49 +136,40 @@ int main(int argc, char *argv[]) {
                     printf("certificate key length %d\n", key_len);
                     uint8_t *client_public_key = client_cert->data;
 
-                    printf("MEOW\n");
-
                     // extract client public key from certificate
                     load_peer_public_key((char*) client_cert->data, client_cert->key_len);
                     if(ec_peer_public_key == NULL){
                         printf("errrrrm sdfkadsjlk the sigma\n");
                     }
-                    printf("MEOW0\n");
 
                     uint8_t *signature = client_cert->data + key_len;
                     size_t signature_len = client_cert_size - (2 * sizeof(uint16_t) + key_len);
                     // verify client certificate
                     // int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* authority)
 
-                    printf("MEOW1\n");
                     if (!verify((char*) client_public_key, key_len, (char*) signature, signature_len, ec_peer_public_key)) {
                         fprintf(stderr, "Verification of client certificate failed.\n");
                         close(sockfd);
                         exit(EXIT_FAILURE);
                     }
                     
-                    printf("MEOW2\n");
                     // verify client nonce
-                    // if (!verify((char*) server_sig, sizeof(*server_sig), (char*) server_sig, sig_size, ec_peer_public_key)) {
-                    //     fprintf(stderr, "Verification of client signature failed.\n");
-                    //     close(sockfd);
-                    //     exit(EXIT_FAILURE);
-                    // }
+                    if (!verify((char*) server_sig, sizeof(*server_sig), (char*) server_sig, sig_size, ec_peer_public_key)) {
+                        fprintf(stderr, "Verification of client signature failed.\n");
+                        close(sockfd);
+                        exit(EXIT_FAILURE);
+                    }
 
                     // derive shared secret
                     derive_secret();
 
-                    // char* secret = "This is a secret message";
-
                     // Print the contents of secret
                     if (secret != NULL) {
+                        printf("secret:");
                         for (size_t i = 0; i < sizeof(secret); ++i) {
                             printf("%02x ", (unsigned char)secret[i]);
                         }
                         printf("\n");
-
-
-                        printf("secret: %s\n", secret);
                     } else {
                         printf("secret is NULL\n");
                     }
@@ -388,24 +380,8 @@ ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce){
     memcpy(server_hello->server_nonce, server_nonce_buf, 32);
    
     // certificate
-    // Certificate *temp_cert = (Certificate *)malloc(cert_size);
-    // memcpy(temp_cert, certificate, cert_size);
-    // temp_cert->key_len = ntohs(temp_cert->key_len);
-    // int key_len = temp_cert->key_len;
-    // uint8_t *public_key = temp_cert->data;
-    // size_t signature_len = cert_size - (2 * sizeof(uint16_t) + key_len);
-    // uint8_t *signature = public_key + key_len; 
     memcpy(server_hello->data, certificate, cert_size);
     server_hello->cert_size = cert_size;
-    // printf("Server Certificate Data:\n");
-    // printf("Key Length: %u\n", temp_cert->key_len);
-    // printf("Padding: %u\n", temp_cert->padding);
-    // printf("Data: %hhn\n", temp_cert->data);
-
-    for (size_t i = 0; i < cert_size; ++i) {
-        printf("%02X ", server_hello->data[i]);
-    }
-    printf("\n");
 
     // signature client nonce
     char *server_nonce_sig = (char*)malloc(sig_size);
@@ -416,8 +392,6 @@ ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce){
     server_hello->sig_size = sig_size;
     free(server_nonce_sig);
     server_hello -> header.msg_len = sizeof(server_hello) - sizeof(SecurityHeader);
-
-
 
     return server_hello;
 }

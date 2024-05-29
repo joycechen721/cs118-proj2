@@ -13,7 +13,7 @@
 // Global variables
 #define BUF_SIZE 1024
 #define CONGESTION_WINDOW_SIZE 20 // at any point there should be max 20 unacked packets
-#define MAX_SEGMENT_SIZE 10       // payload size for each packet (bytes)
+#define MAX_SEGMENT_SIZE 10 // payload size for each packet (bytes)
 #define MAX_PACKET_SEND_SIZE 2001
 #define RTO 1 // retransmission timer
 
@@ -151,13 +151,11 @@ int main(int argc, char *argv[])
             else if(handshake_left_ptr ==1 && bytes_recvd == sizeof(SecurityHeader)){
                 // Print the contents of secret
                     if (secret != NULL) {
+                        printf("secret:");
                         for (size_t i = 0; i < sizeof(secret); ++i) {
                             printf("%02x ", (unsigned char)secret[i]);
                         }
                         printf("\n");
-
-
-                        printf("secret: %s\n", secret);
                     } else {
                         printf("secret is NULL\n");
                     }
@@ -351,7 +349,7 @@ KeyExchangeRequest *create_key_exchange(char* client_nonce, char *server_nonce, 
 
     printf("VERIFY SERVER CERT SUCCESS \n");
     
-    if (!verify((char*) client_nonce, 32, (char*)signed_nonce, signed_nonce_size, ec_peer_public_key)) {
+    if (!verify((char*) client_nonce, sizeof(* client_nonce), (char*)signed_nonce, signed_nonce_size, ec_peer_public_key)) {
         fprintf(stderr, "Verification of signature failed.\n");
         close(sockfd);
         exit(EXIT_FAILURE);

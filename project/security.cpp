@@ -27,11 +27,8 @@ void load_private_key(char* filename) {
 
 void load_peer_public_key(char* peer_key, size_t size) {
     BIO* bio = BIO_new_mem_buf(peer_key, size);
-    printf("ds\n");
     ec_peer_public_key = d2i_PUBKEY_bio(bio, NULL);
-    printf("HER\n");
     BIO_free(bio);
-     printf("HERE\n");
 }
 
 void load_ca_public_key(char* filename) {
