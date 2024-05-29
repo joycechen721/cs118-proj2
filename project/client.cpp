@@ -96,6 +96,9 @@ int main(int argc, char *argv[])
 
     struct timeval timer_start;
     bool handshake = false; 
+    if(flag){
+        handshake = true;
+    }
     while(true){
         // retransmission from rto
         if (timer_active) {
@@ -119,17 +122,19 @@ int main(int argc, char *argv[])
         }
         //security handshake
         if(flag == 1){ // start handshake, assume acks are incrementing curr pack num
-            if(input_window[0] == NULL){
+            if(input_window[1] == NULL){
                 input_window[curr_packet_num] = create_client_hello((char*) client_nonce_buf); //create client hello if not yet created
                 sendto(sockfd, input_window[curr_packet_num], sizeof(ClientHello), 0, (struct sockaddr *)&serveraddr, serversize); //send packet
             }
-            else if(curr_packet_num ==1 && server_window[0] != NULL && input_window[1] == NULL){ //create the exchange message if recieved an ack from server, server send the hello, and input window null
-                ServerHello *server_hello = (ServerHello *)server_window[0];
+            else if(curr_packet_num ==2 && server_window[1] != NULL && input_window[2] == NULL){ //create the exchange message if recieved an ack from server, server send the hello, and input window null
+                Packet* server_hello_packet = server_window[1];
+                ServerHello *server_hello = (ServerHello *) server_hello_packet;
                 uint8_t server_comm_type = server_hello->comm_type;
                 uint8_t server_sig_size = (server_hello->sig_size);
                 // extract server certificate
                 uint16_t server_cert_size = server_hello->cert_size;
                 // Check if the server certificate size is valid
+                printf("get here%d\n", server_sig_size);
                 if (server_cert_size == 0) {
                     fprintf(stderr, "Invalid server certificate size: %u\n", server_cert_size);
                     close(sockfd);
@@ -205,12 +210,6 @@ int main(int argc, char *argv[])
                     gettimeofday(&timer_start, NULL);
                 }
             }
-            else{ //hanshake still active 
-                //need to process packet
-                if(curr_packet_num == 0){
-
-                }
-            }
         }
 
         // receive data from server
@@ -219,9 +218,12 @@ int main(int argc, char *argv[])
         int bytes_recvd = recvfrom(sockfd, server_buf, BUF_SIZE, 0, (struct sockaddr*)&serveraddr, &serversize);
         if (bytes_recvd > 0) {
             Packet* received_packet = (Packet*)server_buf;
-            uint32_t received_packet_number = ntohl(received_packet->packet_number);
+            uint32_t received_packet_number = (received_packet->packet_number);
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
-            uint16_t received_payload_size = ntohs(received_packet->payload_size);
+            uint16_t received_payload_size = (received_packet->payload_size);
+            printf("Received packet number: %u\n", received_packet_number);
+            printf("Received acknowledgment number: %u\n", received_ack_number);
+            printf("Received payload size: %u\n", received_payload_size);
             // receive data --> send an ack
             if (received_packet_number != 0) {
                 // Update window to reflect new packet
@@ -231,23 +233,29 @@ int main(int argc, char *argv[])
                     close(sockfd);
                     return 1;
                 }
+                printf("not an ack%d\n", received_packet_number);
                 memcpy(server_window[received_packet_number], received_packet, sizeof(Packet) + received_payload_size);
-
+                
                 // Update left pointer until it points to nothing, adjust right pointer too
-                while (!handshake && server_window[left_pointer] != NULL) { //move sender window forward since received acked only if handshake done
-                    uint8_t *payload = received_packet->data;
-                    write(1, payload, received_payload_size);
-                    if (server_window[left_pointer] != NULL) {
-                        free(server_window[left_pointer]);
-                        server_window[left_pointer] = NULL;
+                if(!handshake){
+                    while (server_window[left_pointer] != NULL) {
+                        uint8_t *payload = received_packet->data;
+                        write(1, payload, received_payload_size);
+                        if (server_window[left_pointer] != NULL) {
+                            free(server_window[left_pointer]);
+                            server_window[left_pointer] = NULL;
+                        }
+                        left_pointer += 1;
+                        if (left_pointer < MAX_PACKET_SEND_SIZE - 20) {
+                            right_pointer += 1;
+                        }
                     }
-                    left_pointer += 1;
-                    if (left_pointer < MAX_PACKET_SEND_SIZE - 20) {
-                        right_pointer += 1;
-                    }
+                    // Now we can send the cumulative ack
+                    send_ACK(left_pointer, sockfd, serveraddr);
                 }
-                // Now we can send the cumulative ack
-                send_ACK(left_pointer, sockfd, serveraddr);
+                else{
+                    send_ACK(received_packet_number + 1, sockfd, serveraddr);
+                }
 
             } 
             // receive an ack --> update input window
@@ -272,6 +280,10 @@ int main(int argc, char *argv[])
                     else {
                         gettimeofday(&timer_start, NULL);
                     }
+                }
+                else if(handshake){
+                    printf("recievd ack num %d\n", received_ack_number);
+                    curr_packet_num = received_ack_number;
                 }
             }
         }
@@ -322,7 +334,7 @@ Packet *create_client_hello(char* client_nonce_buf){
     }
     memcpy(packet->data, client_hello, sizeof(client_hello));
 
-    packet->packet_number = 0;
+    packet->packet_number = 1;
     packet->acknowledgment_number = 0;
     packet->payload_size = sizeof(client_hello); //flag for later
     free(client_hello); // Free the memory allocated for ClientHello since it's copied into packet
@@ -413,7 +425,7 @@ Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed
         return nullptr;
     }
     memcpy(packet->data, key_exchange, sizeof(KeyExchangeRequest) + sizeof(Certificate) + key_exchange -> cert_size + key_exchange -> sig_size);
-    packet->packet_number = 1; // You may need to set this accordingly
+    packet->packet_number = 2; // You may need to set this accordingly
     packet->acknowledgment_number = 0; // You may need to set this accordingly
     packet->payload_size = key_exchange -> header.msg_len;
     free(key_exchange);

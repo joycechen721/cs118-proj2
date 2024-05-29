@@ -12,8 +12,8 @@
 
 // helper functions
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in clientaddr);
-ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce);
-Finished *create_fin();
+Packet *create_server_hello(int comm_type, uint8_t *client_nonce);
+Packet *create_fin();
 
 // global variables
 #define BUF_SIZE 1024
@@ -56,162 +56,7 @@ int main(int argc, char *argv[]) {
         // load private key & certificate
         load_private_key(private_key_file);
         load_certificate(certificate_file);
-
-        // security handshake
-        void *packets[2] = {nullptr};
-        int handshake_left_ptr = 0;
-
-        // initialize timer
-        struct timeval handshake_timer_start;
-
-        bool received_client_hello = false;
-        bool received_key = false;
-
-        while (handshake_left_ptr < 2)
-        {
-            if (received_key) {
-                struct timeval now;
-                gettimeofday(&now, NULL);
-                double elapsed_time = (now.tv_sec - handshake_timer_start.tv_sec) + (now.tv_usec - handshake_timer_start.tv_usec) / 1e6;
-                
-                // retransmit server fin
-                if (elapsed_time >= RTO) {
-                    Finished* server_fin = (Finished*) packets[handshake_left_ptr];
-                    int did_send = sendto(sockfd, server_fin, sizeof(server_fin), 0, (struct sockaddr *)&clientaddr, clientsize);
-                    if (did_send < 0) {
-                        perror("Failed to retransmit server fin msg");
-                    }
-                    // reset timer
-                    gettimeofday(&handshake_timer_start, NULL);
-                } 
-            }
-
-            if (received_client_hello && !received_key) {
-                struct timeval now;
-                gettimeofday(&now, NULL);
-                double elapsed_time = (now.tv_sec - handshake_timer_start.tv_sec) + (now.tv_usec - handshake_timer_start.tv_usec) / 1e6;
-                
-                // retransmit server hello
-                if (elapsed_time >= RTO) {
-                    ServerHello* server_hello = (ServerHello*) packets[handshake_left_ptr];
-                    printf("server hello size: %ld\n", sizeof(server_hello));
-                    int did_send = sendto(sockfd, server_hello, sizeof(server_hello), 0, (struct sockaddr *)&clientaddr, clientsize);
-                    if (did_send < 0) {
-                        perror("Failed to retransmit server hello msg");
-                    }
-                    // reset timer
-                    gettimeofday(&handshake_timer_start, NULL);
-                }
-
-                // receive client key
-                char exchange_buf[BUF_SIZE];
-                int bytes_recvd = recvfrom(sockfd, exchange_buf, BUF_SIZE, 0, (struct sockaddr *)&clientaddr, &clientsize);
-                if (bytes_recvd > 0)
-                {
-                    // reset timer
-                    received_key = true;
-                    gettimeofday(&handshake_timer_start, NULL);
-                    handshake_left_ptr += 1;
-
-                    // extract data
-                    KeyExchangeRequest* client_key = (KeyExchangeRequest *) exchange_buf;
-                    uint16_t client_cert_size = client_key->cert_size;
-                    
-                    // Extract certificate from client_key -> data
-                    uint8_t raw_cert_buf[client_cert_size];
-                    memcpy(raw_cert_buf, client_key->data, client_cert_size);
-
-                    Certificate* client_cert = (Certificate *) raw_cert_buf;
-                    
-                    uint8_t sig_size = client_key->sig_size;
-                    uint8_t server_sig[32] = {0};
-                    memcpy(server_sig, client_key->data + sig_size, 32);
-
-                    uint16_t key_len = client_cert->key_len;
-                    // int key_len = ntohs(client_cert->key_len);
-                    uint8_t *client_public_key = client_cert->data;
-
-                    // extract client public key from certificate
-                    load_peer_public_key((char*) client_cert->data, client_cert->key_len);
-                    if(ec_peer_public_key == NULL){
-                        printf("errrrrm sdfkadsjlk the sigma\n");
-                    }
-
-                    uint8_t *signature = client_cert->data + key_len - 1;
-                    size_t signature_len = client_cert_size - (sizeof(uint16_t) + sizeof(uint16_t) + key_len);
-                    // verify client certificate
-                    // int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* authority)
-                    if (!verify((char*) client_public_key, key_len, (char*) signature, signature_len, ec_peer_public_key)) {
-                        fprintf(stderr, "Verification of client certificate failed.\n");
-                        close(sockfd);
-                        exit(EXIT_FAILURE);
-                    } 
-                    
-                    // verify client nonce
-                    if (!verify((char*) server_sig, sizeof(*server_sig), (char*) server_sig, sig_size, ec_peer_public_key)) {
-                        fprintf(stderr, "Verification of client signature failed.\n");
-                        close(sockfd);
-                        exit(EXIT_FAILURE);
-                    }
-
-                    // derive shared secret
-                    derive_secret();
-
-                    // Print the contents of secret
-                    // if (secret != NULL) {
-                    //     printf("secret:");
-                    //     for (size_t i = 0; i < sizeof(secret); ++i) {
-                    //         printf("%02x ", (unsigned char)secret[i]);
-                    //     }
-                    //     printf("\n");
-                    // } else {
-                    //     printf("secret is NULL\n");
-                    // }
-
-                    // send fin
-                    Finished* server_fin = create_fin();
-                    packets[handshake_left_ptr] = server_fin;
-                    int did_send = sendto(sockfd, server_fin, sizeof(Finished), 0, (struct sockaddr *)&clientaddr, clientsize);
-                    if (did_send < 0) {
-                        perror("Failed to send server fin msg");
-                    }
-
-
-                    // start timer
-                    gettimeofday(&handshake_timer_start, NULL);
-                }
-            }
-
-            // receive client hello
-            else if(!received_client_hello) {
-                char client_hello_buf[BUF_SIZE];
-                int bytes_recvd = recvfrom(sockfd, client_hello_buf, BUF_SIZE, 0, (struct sockaddr *)&clientaddr, &clientsize);
-                if (bytes_recvd > 0) {
-                    received_client_hello = true;
-                    ClientHello *client_hello = (ClientHello *) client_hello_buf;
-                    uint8_t client_comm_type = client_hello->comm_type;
-                    uint8_t client_nonce[32] = {0};
-                    memcpy(client_nonce, client_hello->client_nonce, 32);
-
-                    // send server hello
-                    ServerHello* server_hello = create_server_hello(client_comm_type, client_nonce);
-                    packets[handshake_left_ptr] = server_hello;
-                    
-                    int did_send = sendto(sockfd, server_hello, sizeof(ServerHello) + server_hello->cert_size + server_hello->sig_size, 0, (struct sockaddr *)&clientaddr, clientsize);
-                    
-                    if (did_send < 0) {
-                        perror("Failed to send server hello msg");
-                    }
-
-                    // start timer
-                    gettimeofday(&handshake_timer_start, NULL);
-                }
-            }
-        }
-        free(packets[0]);
-        free(packets[1]);
     }
-
     // buffer for packets received from server
     Packet* server_window[MAX_PACKET_SEND_SIZE] = {NULL};
     int curr_packet_num = 1;
@@ -227,6 +72,10 @@ int main(int argc, char *argv[]) {
     bool timer_active = false;
     struct timeval timer_start;
     bool client_send = false;
+    bool handshake = false;
+    if(flag){
+        handshake = true;
+    }
     while (true) {
         // retransmission from rto
         if (timer_active) {
@@ -248,7 +97,66 @@ int main(int argc, char *argv[]) {
                 gettimeofday(&timer_start, NULL);
             }
         }
+        if(handshake){ //if handshake still ongoing
+            if(server_window[1] != NULL && input_window[1] == NULL){//can only make server hello if we recieve client hellow and input window 0 is null
+                Packet* client_hello_packet = server_window[1];
+                ClientHello *client_hello = (ClientHello *) client_hello_packet -> data;
+                uint8_t client_comm_type = client_hello->comm_type;
+                uint8_t client_nonce[32] = {0};
+                memcpy(client_nonce, client_hello->client_nonce, 32);
+                // send server hello
+                Packet* server_hello = create_server_hello(client_comm_type, client_nonce);
+                input_window[1] = server_hello;
+                sendto(sockfd, input_window[1], sizeof(Packet) + server_hello -> payload_size, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
+            }
+            else if(server_window[2] != NULL && input_window[2] == NULL){ //this means we have recieved key exchange, need to parse it
+                Packet* key_exchange_packet = server_window[2];
+                KeyExchangeRequest* key_exchange = (KeyExchangeRequest*) key_exchange_packet -> data; 
+                uint16_t client_cert_size = key_exchange->cert_size;
+                // Extract certificate from key_exchange-> data
+                uint8_t raw_cert_buf[client_cert_size];
+                memcpy(raw_cert_buf, key_exchange->data, client_cert_size);
+                Certificate* client_cert = (Certificate *) raw_cert_buf;
+                    
+                uint8_t sig_size = key_exchange->sig_size;
+                uint8_t server_sig[32] = {0};
+                memcpy(server_sig, key_exchange->data + sig_size, 32);
 
+                uint16_t key_len = client_cert->key_len;
+                // int key_len = ntohs(client_cert->key_len);
+                uint8_t *client_public_key = client_cert->data;
+                load_peer_public_key((char*) client_cert->data, client_cert->key_len);
+                if(ec_peer_public_key == NULL){
+                    printf("errrrrm sdfkadsjlk the sigma\n");
+                }
+                uint8_t *signature = client_cert->data + key_len - 1;
+                size_t signature_len = client_cert_size - (sizeof(uint16_t) + sizeof(uint16_t) + key_len);
+                // verify client certificate
+                // int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* authority)
+                if (!verify((char*) client_public_key, key_len, (char*) signature, signature_len, ec_peer_public_key)) {
+                    fprintf(stderr, "Verification of client certificate failed.\n");
+                    close(sockfd);
+                    exit(EXIT_FAILURE);
+                } 
+                
+                // verify client nonce
+                if (!verify((char*) server_sig, sizeof(*server_sig), (char*) server_sig, sig_size, ec_peer_public_key)) {
+                    fprintf(stderr, "Verification of client signature failed.\n");
+                    close(sockfd);
+                    exit(EXIT_FAILURE);
+                }
+
+                // derive shared secret
+                derive_secret();
+
+                Packet* server_fin = create_fin();
+                input_window[2] = server_fin;
+                int did_send = sendto(sockfd, server_fin, sizeof(Packet) + server_fin -> payload_size , 0, (struct sockaddr *)&clientaddr, clientsize);
+                if (did_send < 0) {
+                    perror("Failed to send server fin msg");
+                }
+            }
+        }
         // receive data from client
         char client_buf[BUF_SIZE];
         socklen_t clientsize = sizeof(clientaddr);
@@ -256,9 +164,9 @@ int main(int argc, char *argv[]) {
         if (bytes_recvd > 0) {
             client_send = true;
             Packet* received_packet = (Packet*)client_buf;
-            uint32_t received_packet_number = ntohl(received_packet->packet_number);
+            uint32_t received_packet_number = (received_packet->packet_number);
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
-            uint16_t received_payload_size = ntohs(received_packet->payload_size);
+            uint16_t received_payload_size = (received_packet->payload_size);
             // receive data --> send an ack
             if (received_packet_number != 0) {
                 // Update window to reflect new packet
@@ -269,18 +177,28 @@ int main(int argc, char *argv[]) {
                     return 1;
                 }
                 memcpy(server_window[received_packet_number], received_packet, sizeof(Packet) + received_payload_size);
-
+        
                 // Update left pointer until it points to nothing, adjust right pointer too
-                while (server_window[left_pointer] != NULL) {
-                    uint8_t *payload = received_packet->data;
-                    write(1, payload, received_payload_size);
-                    left_pointer += 1;
-                    if (left_pointer < MAX_PACKET_SEND_SIZE - 20) {
-                        right_pointer += 1;
+                if(!handshake){
+                    while (server_window[left_pointer] != NULL) {
+                        uint8_t *payload = received_packet->data;
+                        write(1, payload, received_payload_size);
+                        if (server_window[left_pointer] != NULL) {
+                            free(server_window[left_pointer]);
+                            server_window[left_pointer] = NULL;
+                        }
+                        left_pointer += 1;
+                        if (left_pointer < MAX_PACKET_SEND_SIZE - 20) {
+                            right_pointer += 1;
+                        }
                     }
+                    // Now we can send the cumulative ack
+                    send_ACK(left_pointer, sockfd, clientaddr);
                 }
-                // Now we can send the cumulative ack
-                send_ACK(left_pointer, sockfd, clientaddr);
+                else{
+                    printf("revd pack num%d\n",received_packet_number );
+                    send_ACK(received_packet_number + 1, sockfd, clientaddr);
+                }
             } 
             // receive an ack --> update input window
             else {
@@ -304,6 +222,9 @@ int main(int argc, char *argv[]) {
                     else {
                         gettimeofday(&timer_start, NULL);
                     }
+                }
+                else if(handshake){
+                    curr_packet_num = received_ack_number;
                 }
             }
         }
@@ -343,16 +264,31 @@ int main(int argc, char *argv[]) {
 }
 
 // send fin message to client
-Finished *create_fin() {
+Packet *create_fin() {
     Finished* server_fin = (Finished*)malloc(sizeof(Finished));
     server_fin -> header.msg_type = FINISHED; 
     server_fin -> header.padding = 0; 
     server_fin -> header.msg_len = sizeof(server_fin) - sizeof(SecurityHeader); 
-    return server_fin;
+    Packet* packet = (Packet*)malloc(sizeof(Packet) + sizeof(Finished));
+    if (!packet) {
+        perror("Failed to allocate memory for packet");
+        free(server_fin);
+        exit(EXIT_FAILURE);
+    }
+
+    // Fill in the packet fields
+    packet->packet_number = 2; 
+    packet -> acknowledgment_number = 0;
+    packet->payload_size = sizeof(Finished);
+    memcpy(packet->data, server_fin, sizeof(Finished));
+
+    // Free the temporary Finished message memory
+    free(server_fin);
+    return packet;
 }
 
 // send ServerHello message back to client
-ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce){
+Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
     size_t sig_size = sign((char*)client_nonce, sizeof(*client_nonce), NULL);
 
     ServerHello* server_hello = (ServerHello*)malloc(sizeof(ServerHello) + sizeof(Certificate) + cert_size + sig_size);
@@ -386,7 +322,19 @@ ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce){
     free(server_nonce_sig);
     server_hello -> header.msg_len = sizeof(server_hello) - sizeof(SecurityHeader);
 
-    return server_hello;
+    size_t server_hello_size = sizeof(ServerHello) + cert_size + sig_size;
+    Packet* packet = (Packet*)malloc(sizeof(Packet) + server_hello_size);
+    if (!packet) {
+        perror("Failed to allocate memory for packet");
+        free(server_hello);
+        exit(EXIT_FAILURE);
+    }
+    packet->packet_number = 1;
+    packet -> acknowledgment_number = 0;
+    memset(packet->padding, 0, sizeof(packet->padding));
+    packet->payload_size = server_hello_size;
+    memcpy(packet->data, server_hello, server_hello_size);
+    return packet;
 }
 
 // Sends cumulative ACK depending on the packet number received
