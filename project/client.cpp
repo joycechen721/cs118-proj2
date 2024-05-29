@@ -110,7 +110,7 @@ int main(int argc, char *argv[])
                 // retransmit leftmost unacked packet if not NULL
                 Packet* retransmit = input_window[input_left];
                 if (retransmit) {
-                    printf("Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
+                    // printf("Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
                     int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&serveraddr, serversize);
                     if (did_send < 0) {
                         perror("Retransmit failed");
@@ -150,13 +150,13 @@ int main(int argc, char *argv[])
                 // ERRROR HERE ASK OMAR
                 Certificate* server_cert = (Certificate*) raw_cert_buf;
                 int key_len = ntohs(server_cert->key_len);
-                printf("certificate key length %d\n", key_len);
-                printf("certificate length %u\n", server_cert_size);
-                printf("signature length %d\n", server_sig_size);
+                // printf("certificate key length %d\n", key_len);
+                // printf("certificate length %u\n", server_cert_size);
+                // printf("signature length %d\n", server_sig_size);
 
                 uint8_t server_nonce[32] = {0};
                 memcpy(server_nonce, server_hello->server_nonce, 32);
-                printf("server nonce length %ld\n", sizeof(server_nonce));
+                // printf("server nonce length %ld\n", sizeof(server_nonce));
 
                 // extract server signature
                 uint8_t client_nonce_signed[server_sig_size];
@@ -194,7 +194,7 @@ int main(int argc, char *argv[])
                 input_window[curr_packet_num] = key_exchange_packet;
                 // Calculate the total size of the packet to send
                 size_t packet_size = sizeof(Packet) + key_exchange_packet->payload_size;
-                printf("packe sadfadsfadsfads %ld\n", packet_size);
+                // printf("packe sadfadsfadsfads %ld\n", packet_size);
                 // Send the packet
                 sendto(sockfd, key_exchange_packet, packet_size, 0, (struct sockaddr *)&serveraddr, serversize);
             }
@@ -277,7 +277,7 @@ int main(int argc, char *argv[])
             } 
             // receive an ack --> update input window
             else {
-                printf("received ack: %d\n", received_ack_number);
+                // printf("received ack: %d\n", received_ack_number);
                 if (received_ack_number > input_left) {
                     // free packets from input_left to ack #
                     for (int i = input_left; i < received_ack_number; i++) {
@@ -342,7 +342,7 @@ Packet *create_client_hello(char* client_nonce_buf){
     client_hello -> header.msg_type = CLIENT_HELLO; 
     client_hello -> header.padding = 0; 
     client_hello -> header.msg_len = sizeof(ClientHello) - sizeof(SecurityHeader); 
-    printf("ch size %ld\n", sizeof(client_hello) - sizeof(SecurityHeader));
+    // printf("ch size %ld\n", sizeof(client_hello) - sizeof(SecurityHeader));
     Packet *packet = (Packet *)malloc(sizeof(Packet) + sizeof(client_hello));
     if (packet == nullptr) {
         fprintf(stderr, "Memory allocation failed for Packet.\n");
@@ -361,16 +361,16 @@ Packet *create_client_hello(char* client_nonce_buf){
 Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed_nonce, size_t signed_nonce_size, Certificate* server_cert, int sockfd, struct sockaddr_in serveraddr) {
     load_peer_public_key((char*) server_cert->data, server_cert->key_len);
     if(ec_peer_public_key == NULL){
-        printf("errrrrm what the sigma\n");
+        fprintf(stderr, "errrrrm what the sigma\n");
     }
 
     uint16_t key_len = ntohs(server_cert -> key_len);
     uint8_t *server_public_key = server_cert -> data;
     size_t signature_len = cert_size - (2 * sizeof(uint16_t) + key_len);
     uint8_t *signature = server_public_key + key_len;
-    printf("server cert key len %d\n", key_len);
-    printf("signed nonce length %ld\n", signed_nonce_size);
-    printf("client nonce length %ld\n", sizeof(* client_nonce));
+    // printf("server cert key len %d\n", key_len);
+    // printf("signed nonce length %ld\n", signed_nonce_size);
+    // printf("client nonce length %ld\n", sizeof(* client_nonce));
 // Verify server signature inside of the certificate
     if (!verify((char *) server_public_key, key_len, (char*) signature, signature_len, ec_ca_public_key)) {
         fprintf(stderr, "Verification of server certificate failed.\n");

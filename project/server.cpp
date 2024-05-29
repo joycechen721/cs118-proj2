@@ -88,7 +88,7 @@ int main(int argc, char *argv[]) {
                 // retransmit leftmost unacked packet if not NULL
                 Packet* retransmit = input_window[input_left];
                 if (retransmit) {
-                    printf("Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
+                    // printf("Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
                     int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&clientaddr, clientsize);
                     if (did_send < 0) {
                         perror("Retransmit failed");
@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
                 Packet* server_hello = create_server_hello(client_comm_type, client_nonce);
                 input_window[1] = server_hello;
                 ServerHello* srvh = (ServerHello*) input_window[1] -> data; 
-                printf("server hello size %ld\n", sizeof(Packet) + server_hello -> payload_size);
+                // printf("server hello size %ld\n", sizeof(Packet) + server_hello -> payload_size);
                 // Send ACK
                 sendto(sockfd, server_hello, sizeof(Packet) + server_hello -> payload_size, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
             }
@@ -211,13 +211,13 @@ int main(int argc, char *argv[]) {
                     send_ACK(left_pointer, sockfd, clientaddr);
                 }
                 else{
-                    printf("revd pack num%d\n",received_packet_number );
+                    // printf("revd pack num%d\n",received_packet_number );
                     send_ACK(received_packet_number + 1, sockfd, clientaddr);
                 }
             } 
             // receive an ack --> update input window
             else {
-                printf("received ack: %d\n", received_ack_number);
+                // printf("received ack: %d\n", received_ack_number);
                 if (received_ack_number > input_left) {
                     // free packets from input_left to ack #
                     for (int i = input_left; i < received_ack_number; i++) {
@@ -330,7 +330,7 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
     char *server_nonce_sig = (char*)malloc(sig_size);
     sign((char*)client_nonce, sizeof(*client_nonce), server_nonce_sig);
     memcpy(server_hello->data + cert_size, server_nonce_sig, sig_size);
-    printf("data size %ld\n", cert_size + sig_size);   
+    // printf("data size %ld\n", cert_size + sig_size);   
 
     server_hello->sig_size = sig_size;
     free(server_nonce_sig);
