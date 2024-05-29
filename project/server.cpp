@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
                     printf("MEOW\n");
 
                     // extract client public key from certificate
-                    load_peer_public_key((char*) client_public_key, key_len);
+                    load_peer_public_key((char*) client_cert->data, client_cert->key_len);
                     if(ec_peer_public_key == NULL){
                         printf("errrrrm sdfkadsjlk the sigma\n");
                     }
@@ -368,7 +368,10 @@ Finished *create_fin() {
 
 // send ServerHello message back to client
 ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce){
-    ServerHello* server_hello = (ServerHello*)malloc(sizeof(ServerHello));
+    size_t sig_size = sign((char*)client_nonce, sizeof(*client_nonce), NULL);
+
+    ServerHello* server_hello = (ServerHello*)malloc(sizeof(ServerHello) + sizeof(Certificate) + cert_size + sig_size);
+
     if (server_hello == nullptr) {
         fprintf(stderr, "Memory allocation failed for ServerHello.\n");
         return nullptr;
@@ -405,7 +408,6 @@ ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce){
     printf("\n");
 
     // signature client nonce
-    size_t sig_size = sign((char*)client_nonce, sizeof(*client_nonce), NULL);
     char *server_nonce_sig = (char*)malloc(sig_size);
     sign((char*)client_nonce, sizeof(*client_nonce), server_nonce_sig);
     memcpy(server_hello->data + cert_size, server_nonce_sig, sig_size);
@@ -414,6 +416,8 @@ ServerHello *create_server_hello(int comm_type, uint8_t *client_nonce){
     server_hello->sig_size = sig_size;
     free(server_nonce_sig);
     server_hello -> header.msg_len = sizeof(server_hello) - sizeof(SecurityHeader);
+
+
 
     return server_hello;
 }
