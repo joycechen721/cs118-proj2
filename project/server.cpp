@@ -116,9 +116,6 @@ int main(int argc, char *argv[]) {
                     // extract data
                     KeyExchangeRequest* client_key = (KeyExchangeRequest *) exchange_buf;
                     uint16_t client_cert_size = client_key->cert_size;
-                    printf("cert size: %d\n", client_cert_size);
-
-                    printf("entire key packet size: %ld\n", sizeof(KeyExchangeRequest) + sizeof(Certificate) + client_key->cert_size + client_key->sig_size);
                     
                     // Extract certificate from client_key -> data
                     uint8_t raw_cert_buf[client_cert_size];
@@ -127,13 +124,11 @@ int main(int argc, char *argv[]) {
                     Certificate* client_cert = (Certificate *) raw_cert_buf;
                     
                     uint8_t sig_size = client_key->sig_size;
-                    printf("sig size: %d\n", sig_size);
                     uint8_t server_sig[32] = {0};
                     memcpy(server_sig, client_key->data + sig_size, 32);
 
                     uint16_t key_len = client_cert->key_len;
                     // int key_len = ntohs(client_cert->key_len);
-                    printf("certificate key length %d\n", key_len);
                     uint8_t *client_public_key = client_cert->data;
 
                     // extract client public key from certificate
@@ -142,16 +137,15 @@ int main(int argc, char *argv[]) {
                         printf("errrrrm sdfkadsjlk the sigma\n");
                     }
 
-                    uint8_t *signature = client_cert->data + key_len;
-                    size_t signature_len = client_cert_size - (2 * sizeof(uint16_t) + key_len);
+                    uint8_t *signature = client_cert->data + key_len - 1;
+                    size_t signature_len = client_cert_size - (sizeof(uint16_t) + sizeof(uint16_t) + key_len);
                     // verify client certificate
                     // int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* authority)
-
                     if (!verify((char*) client_public_key, key_len, (char*) signature, signature_len, ec_peer_public_key)) {
                         fprintf(stderr, "Verification of client certificate failed.\n");
                         close(sockfd);
                         exit(EXIT_FAILURE);
-                    }
+                    } 
                     
                     // verify client nonce
                     if (!verify((char*) server_sig, sizeof(*server_sig), (char*) server_sig, sig_size, ec_peer_public_key)) {
@@ -164,15 +158,15 @@ int main(int argc, char *argv[]) {
                     derive_secret();
 
                     // Print the contents of secret
-                    if (secret != NULL) {
-                        printf("secret:");
-                        for (size_t i = 0; i < sizeof(secret); ++i) {
-                            printf("%02x ", (unsigned char)secret[i]);
-                        }
-                        printf("\n");
-                    } else {
-                        printf("secret is NULL\n");
-                    }
+                    // if (secret != NULL) {
+                    //     printf("secret:");
+                    //     for (size_t i = 0; i < sizeof(secret); ++i) {
+                    //         printf("%02x ", (unsigned char)secret[i]);
+                    //     }
+                    //     printf("\n");
+                    // } else {
+                    //     printf("secret is NULL\n");
+                    // }
 
                     // send fin
                     Finished* server_fin = create_fin();
@@ -182,7 +176,6 @@ int main(int argc, char *argv[]) {
                         perror("Failed to send server fin msg");
                     }
 
-                    printf("HEREEE\n");
 
                     // start timer
                     gettimeofday(&handshake_timer_start, NULL);
