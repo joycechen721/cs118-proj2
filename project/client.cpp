@@ -94,6 +94,7 @@ int main(int argc, char *argv[])
 
     // security stuff
     bool handshake = false;
+    bool encrypt_mac = true;
     if (flag == 1) {
         handshake = true;
         char *ca_public_key_file = argv[4];
@@ -155,7 +156,7 @@ int main(int argc, char *argv[])
                 }
                 uint8_t raw_cert_buf[server_cert_size];
                 memcpy(raw_cert_buf, server_hello->data, server_cert_size);
-                // ERRROR HERE ASK OMAR
+                
                 Certificate* server_cert = (Certificate*) raw_cert_buf;
                 int key_len = ntohs(server_cert->key_len);
                 printf("certificate key length HERE%d\n", key_len);
@@ -177,6 +178,7 @@ int main(int argc, char *argv[])
                     exit(EXIT_FAILURE);
                 }
                 memcpy(pub_key, server_cert->data, key_len);
+                free(pub_key);
                 // DEFINTION:
                 // Packet *create_key_exchange(
                 //char* client_nonce, 
@@ -202,12 +204,12 @@ int main(int argc, char *argv[])
                 size_t packet_size = sizeof(Packet) + key_exchange_packet->payload_size;
                 // Send the packet
                 sendto(sockfd, key_exchange_packet, packet_size, 0, (struct sockaddr *)&serveraddr, serversize);
+
                 curr_packet_num += 1;
+                free(server_window[1]);
+                server_window[1] = NULL;
+                left_pointer += 1;
                 printf("SENT KEY EXCHANGE\n");
-            }
-            // received server fin
-            else if(curr_packet_num == 3){
-                printf("RECEIVED FIN \n");
             }
         }
 
@@ -219,7 +221,7 @@ int main(int argc, char *argv[])
             ssize_t bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
             // check if we're within the send window
             if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
-                printf("\ncurrent packet num %d\n", curr_packet_num);
+                printf("current packet num %d\n", curr_packet_num);
 
                 // create a new packet
                 Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
@@ -235,6 +237,8 @@ int main(int argc, char *argv[])
                     size_t cipher_buf_size = bytesRead + (block_size - (bytesRead % block_size));
                     printf("cipher buf size: %ld \n", cipher_buf_size);
                     char *cipher = (char *)malloc(cipher_buf_size);
+                    printf("HERE\n");
+
                     char iv[16];
                     size_t cipher_size = encrypt_data(read_buf, bytesRead, iv, cipher, 0);
                     printf("cipher size: %ld \n", cipher_size);
@@ -310,6 +314,7 @@ int main(int argc, char *argv[])
                         uint8_t *payload = received_packet->data;
                         // decrypt data
                         if (flag == 1) {
+                            printf("receive encrypted data\n");
                             EncryptedData* encrypted = (EncryptedData*) payload;
                             uint16_t encrypted_data_size = encrypted->payload_size;
                             char* encrypted_data = (char*) malloc (encrypted_data_size);
@@ -344,13 +349,23 @@ int main(int argc, char *argv[])
                     // Now we can send the cumulative ack
                     send_ACK(left_pointer, sockfd, serveraddr);
                 }
-                else{
-                    if (handshake && curr_packet_num == 3) {
+                // receive fin 
+                else {
+                    if (curr_packet_num == 3) {
+                        printf("RECEIVED FIN \n");
                         handshake = false;
+                        if (encrypt_mac) {
+                            derive_keys();
+
+                            printf("Encryption key: %.*s\n", SECRET_SIZE, enc_key);
+                            printf("Authentication key: %.*s\n", SECRET_SIZE, mac_key);
+                        }
+                        free(server_window[2]);
+                        server_window[2] = NULL;
+                        left_pointer += 1;
                     }
                     send_ACK(received_packet_number + 1, sockfd, serveraddr);
                 }
-
             } 
             // receive an ack --> update input window
             else {
@@ -484,7 +499,8 @@ Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed
     size_t self_sig_size = sign((char*)public_key, sizeof(public_key), NULL);
     char *self_signature = (char*)malloc(self_sig_size);
     sign((char*)public_key, sizeof(public_key), self_signature);
-    memcpy(client_cert->data + pub_key_size, self_signature, self_sig_size); 
+    memcpy(client_cert->data + pub_key_size, self_signature, self_sig_size);
+    free(self_signature); 
 
     //now we have to sign the server nonce
     size_t nonce_signature_size = sign((char*)server_nonce, sizeof(server_nonce), NULL);
@@ -520,6 +536,8 @@ Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed
     packet->packet_number = 2; // You may need to set this accordingly
     packet->acknowledgment_number = 0; // You may need to set this accordingly
     packet->payload_size = key_exchange -> header.msg_len;
+
+    free(nonce_signature);
     free(key_exchange);
     return packet; 
 }

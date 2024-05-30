@@ -67,6 +67,7 @@ int main(int argc, char *argv[]) {
 
     // security stuff
     bool handshake = false;
+    bool encrypt_mac = true;
     if(flag == 1) {
         handshake = true;
         char *private_key_file = argv[3];
@@ -120,6 +121,10 @@ int main(int argc, char *argv[]) {
                 printf("SENT SERVER HELLO\n");
 
                 curr_packet_num += 1;
+                free(server_window[1]);
+                server_window[1] = NULL;
+                // printf("Sleft pointer: %d\n", left_pointer);
+                left_pointer += 1;
             }
             else if(input_left == 2 && server_window[2] != NULL && input_window[2] == NULL){ //this means we have recieved 2nd ack + key exchange, need to parse it
                 printf("RECEIVED KEY EXCHANGE\n");
@@ -170,6 +175,9 @@ int main(int argc, char *argv[]) {
                 printf("SENT FIN\n");
 
                 curr_packet_num += 1;
+                free(server_window[2]);
+                server_window[2] = NULL;
+                left_pointer += 1;
             }
         }
 
@@ -206,6 +214,7 @@ int main(int argc, char *argv[]) {
                         uint8_t *payload = received_packet->data;
                         // decrypt data
                         if (flag == 1) {
+                            printf("receive encrypted data\n");
                             EncryptedData* encrypted = (EncryptedData*) payload;
                             uint16_t encrypted_data_size = encrypted->payload_size;
                             char* encrypted_data = (char*) malloc (encrypted_data_size);
@@ -255,6 +264,12 @@ int main(int argc, char *argv[]) {
                 if (handshake && received_ack_number == 3) {
                     printf("RECEIVED FIN ACK\n");
                     handshake = false;
+                    if (encrypt_mac) {
+                        derive_keys();
+
+                        printf("Encryption key: %.*s\n", SECRET_SIZE, enc_key);
+                        printf("Authentication key: %.*s\n", SECRET_SIZE, mac_key);
+                    }
                 }
 
                 if (received_ack_number > input_left) {
@@ -287,7 +302,7 @@ int main(int argc, char *argv[]) {
             ssize_t bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
             
             if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
-                printf("\ncurrent packet num %d\n", curr_packet_num);
+                printf("current packet num %d\n", curr_packet_num);
 
                 // create a new packet
                 Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
