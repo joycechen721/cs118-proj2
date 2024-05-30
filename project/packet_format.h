@@ -58,7 +58,7 @@ typedef struct {
 } KeyExchangeRequest;
 
 typedef struct {
-    SecurityHeader header;
+    SecurityHeader header; // 4 bytes
     uint16_t payload_size; // 2 bytes
     uint16_t padding; // 2 bytes
     uint8_t init_vector[16]; // 16 bytes

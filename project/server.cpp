@@ -319,8 +319,17 @@ int main(int argc, char *argv[]) {
         if (!handshake) {
             char read_buf[BUF_SIZE];
             memset(read_buf, 0, BUF_SIZE);
-            ssize_t bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
-            
+            ssize_t bytesRead = 0;
+            if (flag == 1 && encrypt_mac) {
+                bytesRead = read(STDIN_FILENO, read_buf, 959);
+            } 
+            else if (flag == 1 && !encrypt_mac) {
+                bytesRead = read(STDIN_FILENO, read_buf, 991);
+            } 
+            else {
+                bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
+            }
+            // check if we're within the send window
             if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
                 fprintf(stderr, "current packet num %d\n", curr_packet_num);
 
@@ -337,9 +346,11 @@ int main(int argc, char *argv[]) {
                     char *cipher = (char *)malloc(cipher_buf_size);
                     char iv[IV_SIZE];
 
-                    // BUGGY -- INVALID POINTER ERROR HAPPENS HERE
+                    // BUGGY -- SEGFAULT / INVALID POINTER ERROR HAPPENS HERE
                     size_t cipher_size = encrypt_data(read_buf, bytesRead, iv, cipher, 0);
                     fprintf(stderr, "cipher size: %ld \n", cipher_size);
+
+                    // BUGGY -- SEGFAULT HAPPENS HERE
 
                     // create encrypted data message
                     // no mac 
@@ -363,7 +374,7 @@ int main(int argc, char *argv[]) {
                     // mac (so hungry i need a big mac rn)
                     // this is causing me to lose braincells.
                     else {
-                        EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size);
+                        EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
                         encrypt_data->payload_size = cipher_size + MAC_SIZE;
                         encrypt_data->padding = 0;
                         memcpy(encrypt_data->init_vector, iv, IV_SIZE);
@@ -381,7 +392,7 @@ int main(int argc, char *argv[]) {
 
                         encrypt_data -> header.msg_type = DATA; 
                         encrypt_data -> header.padding = 0; 
-                        encrypt_data -> header.msg_len = sizeof(encrypt_data); 
+                        encrypt_data -> header.msg_len = sizeof(encrypt_data) + MAC_SIZE; 
 
                         // populate udp packet
                         new_packet->payload_size = sizeof(EncryptedData) + cipher_size + MAC_SIZE;
