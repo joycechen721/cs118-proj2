@@ -101,7 +101,7 @@ int main(int argc, char *argv[]) {
         }
         if(handshake){ //if handshake still ongoing
             if(input_left == 1 && server_window[1] != NULL && input_window[1] == NULL){//can only make server hello if we recieve client hello and input window 0 is null
-                printf("RECEIVE CLIENT HELLO\n");
+                // printf("RECEIVE CLIENT HELLO\n");
                 Packet* client_hello_packet = server_window[1];
                 ClientHello *client_hello = (ClientHello *) client_hello_packet -> data;
                 uint8_t client_comm_type = client_hello->comm_type;
@@ -114,10 +114,10 @@ int main(int argc, char *argv[]) {
                 // printf("server hello size %ld\n", sizeof(Packet) + server_hello -> payload_size);
                 // Send ACK
                 sendto(sockfd, server_hello, sizeof(Packet) + server_hello -> payload_size, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
-                printf("SENT SERVER HELLO\n");
+                // printf("SENT SERVER HELLO\n");
             }
             else if(input_left == 2 && server_window[2] != NULL && input_window[2] == NULL){ //this means we have recieved 2nd ack + key exchange, need to parse it
-                printf("RECEIVED KEY EXCHANGE\n");
+                // printf("RECEIVED KEY EXCHANGE\n");
                 Packet* key_exchange_packet = server_window[2];
                 KeyExchangeRequest* key_exchange = (KeyExchangeRequest*) key_exchange_packet -> data; 
                 uint16_t client_cert_size = key_exchange->cert_size;
@@ -161,7 +161,7 @@ int main(int argc, char *argv[]) {
                 if (did_send < 0) {
                     perror("Failed to send server fin msg");
                 }
-                printf("SENT FIN\n");
+                // printf("SENT FIN\n");
             }
         }
         // receive data from client
@@ -176,7 +176,7 @@ int main(int argc, char *argv[]) {
             // receive data --> send an ack
             if (received_packet_number != 0) {
                 // Update window to reflect new packet
-                printf("help%d\n", received_packet_number);
+                // printf("help%d\n", received_packet_number);
                 server_window[received_packet_number] = (Packet*)malloc(sizeof(Packet) + received_payload_size);
                 if (server_window[received_packet_number] == NULL) {
                     perror("Memory allocation failed");
@@ -210,7 +210,6 @@ int main(int argc, char *argv[]) {
             // receive an ack --> update input window
             else {
                 // printf("received ack: %d\n", received_ack_number);
-                printf("received ack: %d\n", received_ack_number);
                 if(received_ack_number ==3 && handshake){
                     handshake = false;
                 }
@@ -325,20 +324,20 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
     FILE *file = fopen("public_key.txt", "w");
 
 
-    // Write the data into the file
-    for (size_t i = 0; i < 95; i++) {
-        fprintf(file, "%02hhX ", (unsigned char)server_hello->data[i]);
-    }
-    fclose(file);
+    // // Write the data into the file
+    // for (size_t i = 0; i < 95; i++) {
+    //     fprintf(file, "%02hhX ", (unsigned char)server_hello->data[i]);
+    // }
+    // fclose(file);
 
-    char *server_nonce_sig = (char*)malloc(sig_size);
-    sign((char*)client_nonce, 32, server_nonce_sig);
-    FILE *nonce = fopen("actual_signed_nonce.txt", "w");
-    // Write the server public key data into the file
-    for (size_t i = 0; i < sig_size; i++) {
-        fprintf(nonce, "%02hhX ", (unsigned char)server_nonce_sig[i]);
-    }
-    fclose(nonce);
+    // char *server_nonce_sig = (char*)malloc(sig_size);
+    // sign((char*)client_nonce, 32, server_nonce_sig);
+    // FILE *nonce = fopen("actual_signed_nonce.txt", "w");
+    // // Write the server public key data into the file
+    // for (size_t i = 0; i < sig_size; i++) {
+    //     fprintf(nonce, "%02hhX ", (unsigned char)server_nonce_sig[i]);
+    // }
+    // fclose(nonce);
     memcpy(server_hello->data + cert_size, server_nonce_sig, sig_size);
     // printf("data size %ld\n", cert_size + sig_size);   
 
