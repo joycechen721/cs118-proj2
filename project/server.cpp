@@ -18,7 +18,7 @@ Packet *create_fin();
 // global variables
 #define BUF_SIZE 1024
 #define CONGESTION_WINDOW_SIZE 20 // at any point there should be max 20 unacked packets
-#define MAX_SEGMENT_SIZE 10 // payload size for each packet (bytes)
+#define MAX_SEGMENT_SIZE 1024 // payload size for each packet (bytes)
 #define MAX_PACKET_SEND_SIZE 2001
 #define RTO 1 // retransmission timer
 
@@ -118,6 +118,8 @@ int main(int argc, char *argv[]) {
 
                 sendto(sockfd, server_hello, sizeof(Packet) + server_hello -> payload_size, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
                 printf("SENT SERVER HELLO\n");
+
+                curr_packet_num += 1;
             }
             else if(input_left == 2 && server_window[2] != NULL && input_window[2] == NULL){ //this means we have recieved 2nd ack + key exchange, need to parse it
                 printf("RECEIVED KEY EXCHANGE\n");
@@ -166,20 +168,24 @@ int main(int argc, char *argv[]) {
                     perror("Failed to send server fin msg");
                 }
                 printf("SENT FIN\n");
+
+                curr_packet_num += 1;
             }
         }
 
-        // receive data from client
+        // listen to socket for incoming data from client
         char client_buf[BUF_SIZE];
         socklen_t clientsize = sizeof(clientaddr);
         int bytes_recvd = recvfrom(sockfd, client_buf, BUF_SIZE, 0, (struct sockaddr*) &clientaddr, &clientsize);
+        
         if (bytes_recvd > 0) {
             Packet* received_packet = (Packet*)client_buf;
-            uint32_t received_packet_number = received_packet->packet_number;
+            uint32_t received_packet_number = (received_packet->packet_number);
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
             uint16_t received_payload_size = (received_packet->payload_size);
+            
             printf("received packet #: %d\n", received_packet_number);
-            // printf("received payload size: %d\n", received_payload_size);
+            printf("received payload size: %d\n", received_payload_size);
             
             // receive data --> send an ack
             if (received_packet_number != 0) {
@@ -198,7 +204,32 @@ int main(int argc, char *argv[]) {
                 if(!handshake){
                     while (server_window[left_pointer] != NULL) {
                         uint8_t *payload = received_packet->data;
-                        write(1, payload, received_payload_size);
+                        // decrypt data
+                        if (flag == 1) {
+                            EncryptedData* encrypted = (EncryptedData*) payload;
+                            uint16_t encrypted_data_size = encrypted->payload_size;
+                            char* encrypted_data = (char*) malloc (encrypted_data_size);
+                            memcpy(encrypted_data, encrypted->data, encrypted_data_size);
+                            // printf("encrypted size %d: \n", encrypted_data_size);
+                            
+                            char iv[16];
+                            memcpy(iv, (char*) encrypted->init_vector, 16);
+                            
+                            char decrypted_data[encrypted_data_size];
+                            size_t size = decrypt_cipher(encrypted_data, encrypted_data_size, iv, decrypted_data, 0);
+                            // printf("decrypted size %ld: \n", size);
+                            // printf("Decrypted plaintext: %.*s\n", (int) size, decrypted_data);
+
+                            // input_size = output_size - padding #
+                            unsigned char padding_size = decrypted_data[encrypted_data_size - 1];
+                            write(1, decrypted_data, size - padding_size);
+
+                            free(encrypted_data);
+                        }
+                        // not encrypted data
+                        else {
+                            write(1, payload, received_payload_size);
+                        }
                         if (server_window[left_pointer] != NULL) {
                             free(server_window[left_pointer]);
                             server_window[left_pointer] = NULL;
@@ -256,23 +287,53 @@ int main(int argc, char *argv[]) {
             ssize_t bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
             
             if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
-                printf("INPUT \n");
+                printf("\ncurrent packet num %d\n", curr_packet_num);
+
                 // create a new packet
                 Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
                 new_packet->packet_number = curr_packet_num;
                 new_packet->acknowledgment_number = 0;
-                new_packet->payload_size = bytesRead;
-                memcpy(new_packet->data, read_buf, bytesRead);
+
+                // encrypt data 
+                if (flag == 1) {
+                    size_t block_size = EVP_CIPHER_block_size(EVP_aes_256_cbc());
+                    size_t cipher_buf_size = bytesRead + (block_size - (bytesRead % block_size));
+                    printf("cipher buf size: %ld \n", cipher_buf_size);
+                    char *cipher = (char *)malloc(cipher_buf_size);
+                    char iv[16];
+                    size_t cipher_size = encrypt_data(read_buf, bytesRead, iv, cipher, 0);
+                    printf("cipher size: %ld \n", cipher_size);
+
+                    // create encrypted data message
+                    EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size);
+                    encrypt_data->payload_size = cipher_size;
+                    encrypt_data->padding = 0;
+                    memcpy(encrypt_data->init_vector, iv, 16);
+                    memcpy(encrypt_data->data, cipher, cipher_size);
+
+                    encrypt_data -> header.msg_type = DATA; 
+                    encrypt_data -> header.padding = 0; 
+                    encrypt_data -> header.msg_len = sizeof(encrypt_data); 
+
+                    // populate udp packet
+                    new_packet->payload_size = sizeof(EncryptedData) + cipher_size;
+                    memcpy(new_packet->data, encrypt_data, sizeof(EncryptedData) + cipher_size);
+
+                    free(cipher);
+                    free(encrypt_data);
+                }
+                // non-encrypted data
+                else {
+                    new_packet->payload_size = bytesRead;
+                    memcpy(new_packet->data, read_buf, bytesRead);
+                }
 
                 input_window[curr_packet_num] = new_packet;
                 curr_packet_num += 1;
 
                 // send the packet
-                int did_send = sendto(sockfd, new_packet, sizeof(Packet) + bytesRead, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
-                if (did_send < 0){ 
-                    perror("error sending");
-                    return errno;
-                }
+                int did_send = sendto(sockfd, new_packet, sizeof(Packet) + new_packet->payload_size, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
+                if (did_send < 0) return errno;
 
                 // reset timer
                 if (!timer_active) {
