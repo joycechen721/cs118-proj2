@@ -59,11 +59,11 @@ typedef struct {
 
 typedef struct {
     SecurityHeader header;
-    uint16_t payload_size;
-    uint16_t padding;
-    uint8_t init_vector[16];
-    uint8_t payload[0];
-    uint8_t mac_code[32];
+    uint16_t payload_size; // 2 bytes
+    uint16_t padding; // 2 bytes
+    uint8_t init_vector[16]; // 16 bytes
+    uint8_t data[0]; // payload + mac code (32 bytes)
+    // uint8_t mac_code[32]; // 32 bytes
 } EncryptedData;
 
 typedef struct {

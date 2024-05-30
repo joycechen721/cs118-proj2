@@ -25,19 +25,15 @@ Packet *create_key_exchange(char *client_nonce, char *server_nonce, char *signed
 int main(int argc, char *argv[])
 {
     // Parse the arguments
-    if (argc < 5)
-    {
-        std::cerr << "Usage: " << argv[0] << " <flag> <hostname> <port> <ca_public_key_file>\n";
-        return 1;
-    }
+    // if (argc < 5)
+    // {
+    //     std::cerr << "Usage: " << argv[0] << " <flag> <hostname> <port> <ca_public_key_file>\n";
+    //     return 1;
+    // }
 
     int flag = atoi(argv[1]);
     char *hostname = argv[2];
     int port = atoi(argv[3]);
-    char *ca_public_key_file = argv[4];
-
-    // Load CA public key
-    load_ca_public_key(ca_public_key_file);
 
     // Create socket
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -95,10 +91,17 @@ int main(int argc, char *argv[])
     uint8_t client_nonce_buf[32] = {0};
 
     struct timeval timer_start;
-    bool handshake = false; 
-    if(flag){
+
+    // security stuff
+    bool handshake = false;
+    if (flag == 1) {
         handshake = true;
+        char *ca_public_key_file = argv[4];
+
+        // Load CA public key
+        load_ca_public_key(ca_public_key_file);
     }
+
     while(true){
         // retransmission from rto
         if (timer_active) {
@@ -120,8 +123,9 @@ int main(int argc, char *argv[])
                 gettimeofday(&timer_start, NULL);
             }
         }
+
         //security handshake
-        if(flag == 1){ // start handshake, assume acks are incrementing curr pack num
+        if(handshake){ // start handshake, assume acks are incrementing curr pack num
             if(curr_packet_num == 1 && input_window[1] == NULL){
                 input_window[curr_packet_num] = create_client_hello((char*) client_nonce_buf); //create client hello if not yet created
                 sendto(sockfd, input_window[curr_packet_num], sizeof(ClientHello), 0, (struct sockaddr *)&serveraddr, serversize); //send packet
@@ -212,20 +216,27 @@ int main(int argc, char *argv[])
                 curr_packet_num+=1;
                 printf("SENT KEY EXCHANGE\n");
             }
+            // received server fin
+            else if(curr_packet_num == 3){
+                printf("RECEIVED FIN \n");
+                handshake = false;
+            }
+        }
 
-        } 
         // read from stdin & send data to server
-        char read_buf[BUF_SIZE];
-        // memset(read_buf, 0, BUF_SIZE);
-        ssize_t bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
-        if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
-            if(!handshake)
-            {
+        if (!handshake) {
+            char read_buf[BUF_SIZE];
+            memset(read_buf, 0, BUF_SIZE);
+            // read MAX_SEG_SIZE from stdin at a time
+            ssize_t bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
+            // check if we're within the send window
+            if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
+                printf("\ncurrent packet num %d\n", curr_packet_num);
                 // create a new packet
                 Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
-                new_packet->packet_number = htonl(curr_packet_num);
+                new_packet->packet_number = curr_packet_num;
                 new_packet->acknowledgment_number = 0;
-                new_packet->payload_size = htons(bytesRead);
+                new_packet->payload_size = bytesRead;
                 memcpy(new_packet->data, read_buf, bytesRead);
 
                 input_window[curr_packet_num] = new_packet;
@@ -243,7 +254,7 @@ int main(int argc, char *argv[])
             } 
         }
 
-        // receive data from server
+        // listen to socket for incoming data from server
         char server_buf[BUF_SIZE];
         // socklen_t serversize = sizeof(serveraddr);
         int bytes_recvd = recvfrom(sockfd, server_buf, BUF_SIZE, 0, (struct sockaddr*)&serveraddr, &serversize);
@@ -267,7 +278,7 @@ int main(int argc, char *argv[])
                 }
                 // Send ACK
                 memcpy(server_window[received_packet_number], received_packet, sizeof(Packet) + received_payload_size);
-                printf("HERE\n");
+
                 // Update left pointer until it points to nothing, adjust right pointer too
                 if(!handshake){
                     while (server_window[left_pointer] != NULL) {
@@ -303,9 +314,11 @@ int main(int argc, char *argv[])
                     }
                     input_left = received_ack_number;
                     input_right = 20 + input_left;
+                    // printf("input right: %d\n", input_right);
 
                     // cancel timer if no unacked packets
                     if (input_left == curr_packet_num) {
+                        printf("no unacked packets in window\n");
                         timer_active = false;
                     } 
                     // reset timer otherwise
@@ -389,7 +402,7 @@ Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed
         close(sockfd);
         exit(EXIT_FAILURE);
     }
-    
+
     if (!verify((char*) client_nonce, 32, (char*)signed_nonce, signed_nonce_size, ec_peer_public_key)) {
         fprintf(stderr, "Verification of signature failed.\n");
         close(sockfd);
