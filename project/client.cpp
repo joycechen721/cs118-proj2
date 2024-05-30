@@ -239,27 +239,58 @@ int main(int argc, char *argv[])
                     char *cipher = (char *)malloc(cipher_buf_size);
                     printf("HERE\n");
 
-                    char iv[16];
+                    char iv[IV_SIZE];
                     size_t cipher_size = encrypt_data(read_buf, bytesRead, iv, cipher, 0);
                     printf("cipher size: %ld \n", cipher_size);
 
                     // create encrypted data message
-                    EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size);
-                    encrypt_data->payload_size = cipher_size;
-                    encrypt_data->padding = 0;
-                    memcpy(encrypt_data->init_vector, iv, 16);
-                    memcpy(encrypt_data->data, cipher, cipher_size);
+                    // no mac 
+                    if (!encrypt_mac) {
+                        EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size);
+                        encrypt_data->payload_size = cipher_size;
+                        encrypt_data->padding = 0;
+                        memcpy(encrypt_data->init_vector, iv, IV_SIZE);
+                        memcpy(encrypt_data->data, cipher, cipher_size);
 
-                    encrypt_data -> header.msg_type = DATA; 
-                    encrypt_data -> header.padding = 0; 
-                    encrypt_data -> header.msg_len = sizeof(encrypt_data); 
+                        encrypt_data -> header.msg_type = DATA; 
+                        encrypt_data -> header.padding = 0; 
+                        encrypt_data -> header.msg_len = sizeof(encrypt_data); 
 
-                    // populate udp packet
-                    new_packet->payload_size = sizeof(EncryptedData) + cipher_size;
-                    memcpy(new_packet->data, encrypt_data, sizeof(EncryptedData) + cipher_size);
+                        // populate udp packet
+                        new_packet->payload_size = sizeof(EncryptedData) + cipher_size;
+                        memcpy(new_packet->data, encrypt_data, sizeof(EncryptedData) + cipher_size);
+                        
+                        free(encrypt_data);
+                    }
+                    // mac (so hungry i need a big mac rn)
+                    // this is causing me to lose braincells.
+                    else {
+                        EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size);
+                        encrypt_data->payload_size = cipher_size + MAC_SIZE;
+                        encrypt_data->padding = 0;
+                        memcpy(encrypt_data->init_vector, iv, IV_SIZE);
+                        memcpy(encrypt_data->data, cipher, cipher_size);
 
-                    free(cipher);
-                    free(encrypt_data);
+                        // hmac over the iv + encrypted payload
+                        size_t total_size = IV_SIZE + cipher_size;
+                        char *concatenated_data = (char *)malloc(total_size);
+                        memcpy(concatenated_data, iv, IV_SIZE);
+                        memcpy(concatenated_data + IV_SIZE, cipher, cipher_size);
+                        char mac[MAC_SIZE];
+                        hmac(concatenated_data, total_size, mac);
+                        memcpy(encrypt_data->data + cipher_size, mac, MAC_SIZE);
+                        printf("HMAC over data: %.*s\n", MAC_SIZE, mac);
+
+                        encrypt_data -> header.msg_type = DATA; 
+                        encrypt_data -> header.padding = 0; 
+                        encrypt_data -> header.msg_len = sizeof(encrypt_data); 
+
+                        // populate udp packet
+                        new_packet->payload_size = sizeof(EncryptedData) + cipher_size + MAC_SIZE;
+                        memcpy(new_packet->data, encrypt_data, sizeof(EncryptedData) + cipher_size + MAC_SIZE);
+                        
+                        free(encrypt_data);
+                    }
                 }
                 // non-encrypted data
                 else {
@@ -317,18 +348,38 @@ int main(int argc, char *argv[])
                             printf("receive encrypted data\n");
                             EncryptedData* encrypted = (EncryptedData*) payload;
                             uint16_t encrypted_data_size = encrypted->payload_size;
+                            // data will be payload - mac size if no encrypt mac
+                            if (encrypt_mac) {
+                                encrypted_data_size = encrypted->payload_size - MAC_SIZE;
+                            }
                             char* encrypted_data = (char*) malloc (encrypted_data_size);
                             memcpy(encrypted_data, encrypted->data, encrypted_data_size);
                             // printf("encrypted size %d: \n", encrypted_data_size);
                             
-                            char iv[16];
-                            memcpy(iv, (char*) encrypted->init_vector, 16);
+                            char iv[IV_SIZE];
+                            memcpy(iv, (char*) encrypted->init_vector, IV_SIZE);
                             
                             char decrypted_data[encrypted_data_size];
                             size_t size = decrypt_cipher(encrypted_data, encrypted_data_size, iv, decrypted_data, 0);
                             // printf("Decrypted plaintext: %.*s\n", (int) size, decrypted_data);
 
                             unsigned char padding_size = decrypted_data[encrypted_data_size - 1];
+
+                            // verify the packet MAC
+                            if (encrypt_mac) {
+                                char* mac_code = (char*) malloc (MAC_SIZE);
+                                memcpy(mac_code, encrypted->data + encrypted_data_size, MAC_SIZE);
+
+                                if (!verify((char *) decrypted_data, size - padding_size, (char*) mac_code, MAC_SIZE, ec_peer_public_key)) {
+                                    fprintf(stderr, "Verification of packet mac code failed.\n");
+                                    free(mac_code);
+                                    close(sockfd);
+                                    exit(EXIT_FAILURE);
+                                }
+                                fprintf(stderr, "Verification of packet mac code succeeded.\n");
+                                free(mac_code);
+                            }
+
                             write(1, decrypted_data, size - padding_size);
 
                             free(encrypted_data);
