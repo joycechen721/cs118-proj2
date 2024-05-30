@@ -56,25 +56,6 @@ int main(int argc, char *argv[])
     serveraddr.sin_port = htons(port);
     socklen_t serversize = sizeof(serveraddr);
 
-    // while (handshake_left_ptr < 2)
-    // {
-        
-    //         else if(handshake_left_ptr ==1 && bytes_recvd == sizeof(SecurityHeader)){
-    //             // Print the contents of secret
-    //                 // if (secret != NULL) {
-    //                 //     fprintf(stderr, "secret:");
-    //                 //     for (size_t i = 0; i < sizeof(secret); ++i) {
-    //                 //         fprintf(stderr, "%02x ", (unsigned char)secret[i]);
-    //                 //     }
-    //                 //     fprintf(stderr, "\n");
-    //                 // } else {
-    //                 //     fprintf(stderr, "secret is NULL\n");
-    //                 // }
-    //             handshake_left_ptr +=1; 
-    //         }
-    //     }
-    // }
-
     // buffer for packets received from client
     Packet *server_window[MAX_PACKET_SEND_SIZE] = {nullptr};
     int curr_packet_num = 1;
@@ -268,7 +249,7 @@ int main(int argc, char *argv[])
 
                         encrypt_data -> header.msg_type = DATA; 
                         encrypt_data -> header.padding = 0; 
-                        encrypt_data -> header.msg_len = sizeof(encrypt_data); 
+                        encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader);
 
                         // populate udp packet
                         new_packet->payload_size = sizeof(EncryptedData) + cipher_size;
@@ -283,22 +264,27 @@ int main(int argc, char *argv[])
                         EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
                         encrypt_data->payload_size = cipher_size + MAC_SIZE;
                         encrypt_data->padding = 0;
+                        printf("meow1\n");
                         memcpy(encrypt_data->init_vector, iv, IV_SIZE);
+                        printf("meow2\n");
                         memcpy(encrypt_data->data, cipher, cipher_size);
 
                         // hmac over the iv + encrypted payload
                         size_t total_size = IV_SIZE + cipher_size;
                         char *concatenated_data = (char *)malloc(total_size);
+                        printf("meow3\n");
                         memcpy(concatenated_data, iv, IV_SIZE);
+                        printf("meow4\n");
                         memcpy(concatenated_data + IV_SIZE, cipher, cipher_size);
                         char mac[MAC_SIZE];
                         hmac(concatenated_data, total_size, mac);
+                        printf("meow5\n");
                         memcpy(encrypt_data->data + cipher_size, mac, MAC_SIZE);
                         fprintf(stderr, "HMAC over data: %.*s\n", MAC_SIZE, mac);
-
+                        printf("meow6\n");
                         encrypt_data -> header.msg_type = DATA; 
                         encrypt_data -> header.padding = 0; 
-                        encrypt_data -> header.msg_len = sizeof(encrypt_data) + MAC_SIZE; 
+                        encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader); 
 
                         // populate udp packet
                         new_packet->payload_size = sizeof(EncryptedData) + cipher_size + MAC_SIZE;
@@ -444,11 +430,13 @@ int main(int argc, char *argv[])
                     // free packets from input_left to ack #
                     for (int i = input_left; i < received_ack_number; i++) {
                         if (input_window[i] != NULL) {
-                            free(input_window[i]);
                             fprintf(stderr, "HAHAHA\n");
+                            free(input_window[i]);
+                            
                             input_window[i] = NULL;
                         }
                     }
+                    fprintf(stderr, "HAHAHA2\n");
                     input_left = received_ack_number;
                     input_right = 20 + input_left;
                     // fprintf(stderr, "input right: %d\n", input_right);

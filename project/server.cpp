@@ -363,7 +363,7 @@ int main(int argc, char *argv[]) {
 
                         encrypt_data -> header.msg_type = DATA; 
                         encrypt_data -> header.padding = 0; 
-                        encrypt_data -> header.msg_len = sizeof(encrypt_data); 
+                        encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size - sizeof(SecurityHeader); 
 
                         // populate udp packet
                         new_packet->payload_size = sizeof(EncryptedData) + cipher_size;
@@ -392,7 +392,7 @@ int main(int argc, char *argv[]) {
 
                         encrypt_data -> header.msg_type = DATA; 
                         encrypt_data -> header.padding = 0; 
-                        encrypt_data -> header.msg_len = sizeof(encrypt_data) + MAC_SIZE; 
+                        encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader); 
 
                         // populate udp packet
                         new_packet->payload_size = sizeof(EncryptedData) + cipher_size + MAC_SIZE;
@@ -432,7 +432,7 @@ Packet *create_fin() {
     Finished* server_fin = (Finished*)malloc(sizeof(Finished));
     server_fin -> header.msg_type = FINISHED; 
     server_fin -> header.padding = 0; 
-    server_fin -> header.msg_len = sizeof(server_fin) - sizeof(SecurityHeader); 
+    server_fin -> header.msg_len = sizeof(Finished) - sizeof(SecurityHeader); 
     Packet* packet = (Packet*)malloc(sizeof(Packet) + sizeof(Finished));
     if (!packet) {
         perror("Failed to allocate memory for packet");
@@ -500,7 +500,7 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
 
     server_hello->sig_size = sig_size;
     free(server_nonce_sig);
-    server_hello -> header.msg_len = sizeof(server_hello) - sizeof(SecurityHeader);
+    server_hello -> header.msg_len = sizeof(ServerHello) + sizeof(Certificate) + cert_size + sig_size - sizeof(SecurityHeader);
 
     size_t server_hello_size = sizeof(ServerHello) + cert_size + sig_size;
     Packet* packet = (Packet*)malloc(sizeof(Packet) + server_hello_size);
