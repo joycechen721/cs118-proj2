@@ -78,6 +78,7 @@ int main(int argc, char *argv[]) {
     }
 
     while (true) {
+        
         // retransmission from rto
         // if (timer_active) {
         //     struct timeval now;
@@ -136,17 +137,6 @@ int main(int argc, char *argv[]) {
                 // int key_len = ntohs(client_cert->key_len);
                 uint8_t *client_public_key = client_cert->data;
                 load_peer_public_key((char*) client_cert->data, client_cert->key_len);
-                FILE *file = fopen("public_key.txt", "w");
-                if (file == NULL) {
-                    fprintf(stderr, "Error opening file.\n");
-                    return 1; // Or handle the error appropriately
-                }
-
-                // Write the data into the file
-                for (size_t i = 0; i < client_cert->key_len; i++) {
-                    fprintf(file, "%02hhX ", (unsigned char)client_cert->data[i]);
-                }
-                fclose(file);
 
                 uint8_t *signature = client_cert->data + key_len-1;
                 size_t signature_len = client_cert_size - (sizeof(uint16_t) + sizeof(uint16_t) + key_len);
@@ -184,9 +174,8 @@ int main(int argc, char *argv[]) {
         socklen_t clientsize = sizeof(clientaddr);
         int bytes_recvd = recvfrom(sockfd, client_buf, BUF_SIZE, 0, (struct sockaddr*) &clientaddr, &clientsize);
         if (bytes_recvd > 0) {
-            client_send = true;
             Packet* received_packet = (Packet*)client_buf;
-            uint32_t received_packet_number = (received_packet->packet_number);
+            uint32_t received_packet_number = ntohl(received_packet->packet_number);
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
             uint16_t received_payload_size = (received_packet->payload_size);
             printf("received packet #: %d\n", received_packet_number);
@@ -195,6 +184,7 @@ int main(int argc, char *argv[]) {
             // receive data --> send an ack
             if (received_packet_number != 0) {
                 // Update window to reflect new packet
+                printf("help%d\n", received_packet_number);
                 server_window[received_packet_number] = (Packet*)malloc(sizeof(Packet) + received_payload_size);
                 if (server_window[received_packet_number] == NULL) {
                     perror("Memory allocation failed");
@@ -344,13 +334,27 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
     char server_nonce_buf[32];
     generate_nonce(server_nonce_buf, 32);
     memcpy(server_hello->server_nonce, server_nonce_buf, 32);
-   
     // certificate
     memcpy(server_hello->data, certificate, cert_size);
     server_hello->cert_size = cert_size;
 
+    FILE *file = fopen("public_key.txt", "w");
+
+
+    // Write the data into the file
+    for (size_t i = 0; i < 95; i++) {
+        fprintf(file, "%02hhX ", (unsigned char)server_hello->data[i]);
+    }
+    fclose(file);
+
     char *server_nonce_sig = (char*)malloc(sig_size);
     sign((char*)client_nonce, 32, server_nonce_sig);
+    FILE *nonce = fopen("actual_signed_nonce.txt", "w");
+    // Write the server public key data into the file
+    for (size_t i = 0; i < sig_size; i++) {
+        fprintf(nonce, "%02hhX ", (unsigned char)server_nonce_sig[i]);
+    }
+    fclose(nonce);
     memcpy(server_hello->data + cert_size, server_nonce_sig, sig_size);
     printf("sig size %ld\n", cert_size + sig_size);   
 
