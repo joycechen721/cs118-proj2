@@ -175,7 +175,7 @@ int main(int argc, char *argv[]) {
         int bytes_recvd = recvfrom(sockfd, client_buf, BUF_SIZE, 0, (struct sockaddr*) &clientaddr, &clientsize);
         if (bytes_recvd > 0) {
             Packet* received_packet = (Packet*)client_buf;
-            uint32_t received_packet_number = ntohl(received_packet->packet_number);
+            uint32_t received_packet_number = received_packet->packet_number;
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
             uint16_t received_payload_size = (received_packet->payload_size);
             printf("received packet #: %d\n", received_packet_number);
@@ -184,7 +184,7 @@ int main(int argc, char *argv[]) {
             // receive data --> send an ack
             if (received_packet_number != 0) {
                 // Update window to reflect new packet
-                printf("help%d\n", received_packet_number);
+                // printf("help%d\n", received_packet_number);
                 server_window[received_packet_number] = (Packet*)malloc(sizeof(Packet) + received_payload_size);
                 if (server_window[received_packet_number] == NULL) {
                     perror("Memory allocation failed");
@@ -255,7 +255,7 @@ int main(int argc, char *argv[]) {
             memset(read_buf, 0, BUF_SIZE);
             ssize_t bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
             
-            if (client_send && bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
+            if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
                 printf("INPUT \n");
                 // create a new packet
                 Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);

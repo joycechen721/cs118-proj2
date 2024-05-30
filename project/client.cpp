@@ -249,9 +249,9 @@ int main(int argc, char *argv[])
         int bytes_recvd = recvfrom(sockfd, server_buf, BUF_SIZE, 0, (struct sockaddr*)&serveraddr, &serversize);
         if (bytes_recvd > 0) {
             Packet* received_packet = (Packet*)server_buf;
-            uint32_t received_packet_number = ntohl(received_packet->packet_number);
+            uint32_t received_packet_number = received_packet->packet_number;
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
-            uint16_t received_payload_size = ntohs(received_packet->payload_size);
+            uint16_t received_payload_size = (received_packet->payload_size);
             // printf("Received packet number: %u\n", received_packet_number);
             // printf("Received acknowledgment number: %u\n", received_ack_number);
             // printf("Received payload size: %u\n", received_payload_size);
