@@ -125,7 +125,7 @@ int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* 
     }
     if (EVP_DigestVerifyInit(mdctx, NULL, EVP_sha256(), NULL, authority) != 1) {
         perror("error2");
-        fprintf(stderr, "%d", errno);
+        printf("wererwer\n");
         EVP_MD_CTX_free(mdctx);
         return 0; 
     }

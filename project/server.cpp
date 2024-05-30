@@ -99,7 +99,8 @@ int main(int argc, char *argv[]) {
             }
         }
         if(handshake){ //if handshake still ongoing
-            if(server_window[1] != NULL && input_window[1] == NULL){//can only make server hello if we recieve client hellow and input window 0 is null
+            if(input_left == 1 && server_window[1] != NULL && input_window[1] == NULL){//can only make server hello if we recieve client hello and input window 0 is null
+                printf("RECEIVE CLIENT HELLO\n");
                 Packet* client_hello_packet = server_window[1];
                 ClientHello *client_hello = (ClientHello *) client_hello_packet -> data;
                 uint8_t client_comm_type = client_hello->comm_type;
@@ -112,8 +113,10 @@ int main(int argc, char *argv[]) {
                 printf("server hello size %ld\n", sizeof(Packet) + server_hello -> payload_size);
                 // Send ACK
                 sendto(sockfd, server_hello, sizeof(Packet) + server_hello -> payload_size, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
+                printf("SENT SERVER HELLO\n");
             }
-            else if(server_window[2] != NULL && input_window[2] == NULL){ //this means we have recieved key exchange, need to parse it
+            else if(input_left == 2 && server_window[2] != NULL && input_window[2] == NULL){ //this means we have recieved 2nd ack + key exchange, need to parse it
+                printf("RECEIVED KEY EXCHANGE\n");
                 Packet* key_exchange_packet = server_window[2];
                 KeyExchangeRequest* key_exchange = (KeyExchangeRequest*) key_exchange_packet -> data; 
                 uint16_t client_cert_size = key_exchange->cert_size;
@@ -150,9 +153,7 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "Verification of client certificate failed.\n");
                     close(sockfd);
                     exit(EXIT_FAILURE);
-                } 
-
-
+                }
                 
                 // verify client nonce
                 if (!verify((char*) server_sig, sizeof(*server_sig), (char*) server_sig, sig_size, ec_peer_public_key)) {
@@ -170,6 +171,7 @@ int main(int argc, char *argv[]) {
                 if (did_send < 0) {
                     perror("Failed to send server fin msg");
                 }
+                printf("SENT FIN\n");
             }
         }
         // receive data from client
@@ -304,7 +306,7 @@ Packet *create_fin() {
 
 // send ServerHello message back to client
 Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
-    size_t sig_size = sign((char*)client_nonce, sizeof(*client_nonce), NULL);
+    size_t sig_size = sign((char*)client_nonce, 32, NULL);
 
     ServerHello* server_hello = (ServerHello*)malloc(sizeof(ServerHello) + sizeof(Certificate) + cert_size + sig_size);
 
@@ -328,9 +330,9 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
     server_hello->cert_size = cert_size;
 
     char *server_nonce_sig = (char*)malloc(sig_size);
-    sign((char*)client_nonce, sizeof(*client_nonce), server_nonce_sig);
+    sign((char*)client_nonce, 32, server_nonce_sig);
     memcpy(server_hello->data + cert_size, server_nonce_sig, sig_size);
-    printf("data size %ld\n", cert_size + sig_size);   
+    printf("sig size %ld\n", cert_size + sig_size);   
 
     server_hello->sig_size = sig_size;
     free(server_nonce_sig);

@@ -122,11 +122,14 @@ int main(int argc, char *argv[])
         }
         //security handshake
         if(flag == 1){ // start handshake, assume acks are incrementing curr pack num
-            if(input_window[1] == NULL){
+            if(curr_packet_num == 1 && input_window[1] == NULL){
                 input_window[curr_packet_num] = create_client_hello((char*) client_nonce_buf); //create client hello if not yet created
                 sendto(sockfd, input_window[curr_packet_num], sizeof(ClientHello), 0, (struct sockaddr *)&serveraddr, serversize); //send packet
+                curr_packet_num += 1;
+                printf("SENT CLIENT HELLO\n");
             }
-            else if(curr_packet_num ==2 && server_window[1] != NULL && input_window[2] == NULL){ //create the exchange message if recieved an ack from server, server send the hello, and input window null
+            else if(curr_packet_num == 2 && server_window[1] != NULL && input_window[2] == NULL){ //create the exchange message if recieved an ack from server, server send the hello, and input window null
+                printf("RECEIVED SERVER HELLO\n");
                 Packet* server_hello_packet = server_window[1];
                 ServerHello *server_hello = (ServerHello *) server_hello_packet -> data;
                 SecurityHeader* header = &server_hello -> header;
@@ -137,6 +140,7 @@ int main(int argc, char *argv[])
                 }
                 uint8_t server_comm_type = server_hello->comm_type;
                 uint8_t server_sig_size = (server_hello->sig_size);
+                
                 // extract server certificate
                 uint16_t server_cert_size = server_hello->cert_size;
                 // Check if the server certificate size is valid
@@ -174,18 +178,26 @@ int main(int argc, char *argv[])
                     fprintf(stderr, "Error opening file for server public key.\n");
                     return 1; // Or handle the error appropriately
                 }
-
                 // Write the server public key data into the file
                 for (size_t i = 0; i < server_cert->key_len; i++) {
                     fprintf(file_server_pubkey, "%02hhX ", (unsigned char)server_cert->data[i]);
                 }
+                // DEFINTION:
+                // Packet *create_key_exchange(
+                //char* client_nonce, 
+                // char *server_nonce, 
+                // char *signed_nonce, // server signature of client nonce
+                // size_t signed_nonce_size, // size of signed_nonce
+                // Certificate* server_cert, 
+                // int sockfd, 
+                // struct sockaddr_in serveraddr)
 
                 // Close the file for server public key
                 fclose(file_server_pubkey);
                 Packet *key_exchange_packet = create_key_exchange(
-                (char*) client_nonce_buf, 
-                (char*)    server_nonce, 
-                (char*)    client_nonce_signed, 
+                (char*) client_nonce_buf,
+                (char*) server_nonce, 
+                (char*) client_nonce_signed, 
                     server_sig_size,
                     server_cert, 
                     sockfd, 
@@ -197,6 +209,8 @@ int main(int argc, char *argv[])
                 printf("packe sadfadsfadsfads %ld\n", packet_size);
                 // Send the packet
                 sendto(sockfd, key_exchange_packet, packet_size, 0, (struct sockaddr *)&serveraddr, serversize);
+                curr_packet_num+=1;
+                printf("SENT KEY EXCHANGE\n");
             }
 
         } 
@@ -226,7 +240,7 @@ int main(int argc, char *argv[])
                     timer_active = true;
                     gettimeofday(&timer_start, NULL);
                 }
-            }
+            } 
         }
 
         // receive data from server
@@ -244,6 +258,7 @@ int main(int argc, char *argv[])
             // receive data --> send an ack
             if (received_packet_number != 0) {
                 // Update window to reflect new packet
+                printf("RECEIVE DATA (NON ACK) %d\n", received_packet_number);
                 server_window[received_packet_number] = (Packet*)malloc(sizeof(Packet) + received_payload_size);
                 if (server_window[received_packet_number] == NULL) {
                     perror("Memory allocation failed");
@@ -252,7 +267,7 @@ int main(int argc, char *argv[])
                 }
                 // Send ACK
                 memcpy(server_window[received_packet_number], received_packet, sizeof(Packet) + received_payload_size);
-                
+                printf("HERE\n");
                 // Update left pointer until it points to nothing, adjust right pointer too
                 if(!handshake){
                     while (server_window[left_pointer] != NULL) {
@@ -297,9 +312,6 @@ int main(int argc, char *argv[])
                     else {
                         gettimeofday(&timer_start, NULL);
                     }
-                }
-                else if(handshake){
-                    curr_packet_num = received_ack_number;
                 }
             }
         }
@@ -370,13 +382,14 @@ Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed
     uint8_t *signature = server_public_key + key_len;
     printf("server cert key len %d\n", key_len);
     printf("signed nonce length %ld\n", signed_nonce_size);
-    printf("client nonce length %ld\n", sizeof(* client_nonce));
-// Verify server signature inside of the certificate
+
+    // Verify server signature inside of the certificate
     if (!verify((char *) server_public_key, key_len, (char*) signature, signature_len, ec_ca_public_key)) {
         fprintf(stderr, "Verification of server certificate failed.\n");
         close(sockfd);
         exit(EXIT_FAILURE);
     }
+    
     if (!verify((char*) client_nonce, 32, (char*)signed_nonce, signed_nonce_size, ec_peer_public_key)) {
         fprintf(stderr, "Verification of signature failed.\n");
         close(sockfd);
