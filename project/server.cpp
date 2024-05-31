@@ -194,9 +194,9 @@ int main(int argc, char *argv[]) {
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
             uint16_t received_payload_size = ntohs(received_packet->payload_size);
             
-            //fprintf(stderr, "received ack #: %d\n", received_ack_number);
-            //fprintf(stderr, "received packet #: %d\n", received_packet_number);
-            //fprintf(stderr, "received payload size: %d\n", received_payload_size);
+            fprintf(stderr, "received ack #: %d\n", received_ack_number);
+            fprintf(stderr, "received packet #: %d\n", received_packet_number);
+            fprintf(stderr, "received payload size: %d\n", received_payload_size);
 
             // receive an ack --> update input window
             if (received_ack_number != 0) {

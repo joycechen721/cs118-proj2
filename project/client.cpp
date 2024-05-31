@@ -202,7 +202,7 @@ int main(int argc, char *argv[])
         int bytes_recvd = recvfrom(sockfd, server_buf, BUF_SIZE, 0, (struct sockaddr*)&serveraddr, &serversize);
         
         if (bytes_recvd > 0) {
-            printf("incoming packet from server\n");
+            //printf("incoming packet from server\n");
             Packet* received_packet = (Packet*)server_buf;
             uint32_t received_packet_number = ntohl(received_packet->packet_number);
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
@@ -399,7 +399,7 @@ int main(int argc, char *argv[])
 }
 
 Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int &curr_packet_num, int input_left, int input_right, bool &timer_active, struct timeval &timer_start) {
-    char read_buf[BUF_SIZE];
+    char* read_buf = (char*) malloc (BUF_SIZE);
     memset(read_buf, 0, BUF_SIZE);
     // read MAX_SEG_SIZE from stdin at a time
     int bytesRead = 0;
@@ -414,8 +414,8 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
     }
     // check if we're within the send window
     if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
-        //fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
-        //fprintf(stderr, "current packet num %d\n", curr_packet_num);
+        fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
+        fprintf(stderr, "current packet num %d\n", curr_packet_num);
     
         // Print the contents of read_buf
         // //fprintf(stderr, "read_buf contents:\n");
@@ -502,8 +502,11 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
             memcpy(new_packet->data, read_buf, bytesRead);
         }
 
+        free(read_buf);
+
         return new_packet;
     }
+    free(read_buf);
     return NULL;
 }
 
