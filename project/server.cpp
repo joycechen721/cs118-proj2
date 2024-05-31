@@ -14,6 +14,7 @@
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in clientaddr);
 Packet *create_server_hello(int comm_type, uint8_t *client_nonce);
 Packet *create_fin();
+Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int &curr_packet_num, int input_left, int input_right, bool &timer_active, struct timeval &timer_start);
 
 // global variables
 #define BUF_SIZE 1024
@@ -187,6 +188,7 @@ int main(int argc, char *argv[]) {
         int bytes_recvd = recvfrom(sockfd, client_buf, BUF_SIZE, 0, (struct sockaddr*) &clientaddr, &clientsize);
         
         if (bytes_recvd > 0) {
+            printf("incoming packet from client\n");
             Packet* received_packet = (Packet*)client_buf;
             uint32_t received_packet_number = (received_packet->packet_number);
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
@@ -194,6 +196,45 @@ int main(int argc, char *argv[]) {
             
             fprintf(stderr, "received packet #: %d\n", received_packet_number);
             fprintf(stderr, "received payload size: %d\n", received_payload_size);
+
+            // receive an ack --> update input window
+            if (received_ack_number != 0) {
+                fprintf(stderr, "received ack: %d\n", received_ack_number);
+                
+                // receive ack for fin
+                if (handshake && received_ack_number == 3) {
+                    fprintf(stderr, "RECEIVED FIN ACK\n");
+                    handshake = false;
+                    if (encrypt_mac) {
+                        derive_keys();
+
+                        fprintf(stderr, "Encryption key: %.*s\n", SECRET_SIZE, enc_key);
+                        fprintf(stderr, "Authentication key: %.*s\n", SECRET_SIZE, mac_key);
+                    }
+                }
+
+                if (received_ack_number > input_left) {
+                    // free packets from input_left to ack #
+                    for (int i = input_left; i < received_ack_number; i++) {
+                        if (input_window[i] != NULL) {
+                            free(input_window[i]);
+                            input_window[i] = NULL;
+                        }
+                    }
+                    input_left = received_ack_number;
+                    input_right = 20 + input_left;
+
+                    // cancel timer if no unacked packets
+                    if (input_left == curr_packet_num) {
+                        fprintf(stderr, "no unacked packets in window\n");
+                        timer_active = false;
+                    } 
+                    // reset timer otherwise
+                    else {
+                        gettimeofday(&timer_start, NULL);
+                    }
+                }
+            }
             
             // receive data --> send an ack
             if (received_packet_number != 0) {
@@ -268,152 +309,53 @@ int main(int argc, char *argv[]) {
                             right_pointer += 1;
                         }
                     }
+
+                    // check whether there is data from input to send as well as ack
+                    Packet* new_packet = read_from_stdin(flag, encrypt_mac, input_window, curr_packet_num, input_left, input_right, timer_active, timer_start);
+
+                     // if not, send pure ack packet
+                    if (new_packet == NULL) {
+                        send_ACK(received_packet_number + 1, sockfd, clientaddr);
+                    }
+                    // send data + ack
+                    else {
+                        input_window[curr_packet_num] = new_packet;
+                        curr_packet_num += 1;
+
+                        new_packet->acknowledgment_number = htonl(left_pointer);
+
+                        // send the packet
+                        int did_send = sendto(sockfd, new_packet, sizeof(Packet) + new_packet->payload_size, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
+                        if (did_send < 0) return errno;
+
+                        // reset timer
+                        if (!timer_active) {
+                            timer_active = true;
+                            gettimeofday(&timer_start, NULL);
+                        }
+                    }
                     // Now we can send the cumulative ack
-                    send_ACK(left_pointer, sockfd, clientaddr);
+                    // send_ACK(left_pointer, sockfd, clientaddr);
                 }
                 else{
                     fprintf(stderr, "revd pack num%d\n",received_packet_number );
                     send_ACK(received_packet_number + 1, sockfd, clientaddr);
                 }
             } 
-            // receive an ack --> update input window
-            else {
-                fprintf(stderr, "received ack: %d\n", received_ack_number);
-                
-                // receive ack for fin
-                if (handshake && received_ack_number == 3) {
-                    fprintf(stderr, "RECEIVED FIN ACK\n");
-                    handshake = false;
-                    if (encrypt_mac) {
-                        derive_keys();
-
-                        fprintf(stderr, "Encryption key: %.*s\n", SECRET_SIZE, enc_key);
-                        fprintf(stderr, "Authentication key: %.*s\n", SECRET_SIZE, mac_key);
-                    }
-                }
-
-                if (received_ack_number > input_left) {
-                    // free packets from input_left to ack #
-                    for (int i = input_left; i < received_ack_number; i++) {
-                        if (input_window[i] != NULL) {
-                            free(input_window[i]);
-                            input_window[i] = NULL;
-                        }
-                    }
-                    input_left = received_ack_number;
-                    input_right = 20 + input_left;
-
-                    // cancel timer if no unacked packets
-                    if (input_left == curr_packet_num) {
-                        timer_active = false;
-                    } 
-                    // reset timer otherwise
-                    else {
-                        gettimeofday(&timer_start, NULL);
-                    }
-                }
-            }
         }
 
-        // read from stdin & send data to server
+        // no bytes received, just send whatever is in standard input
         if (!handshake) {
-            char read_buf[BUF_SIZE];
-            memset(read_buf, 0, BUF_SIZE);
-            ssize_t bytesRead = 0;
-            if (flag == 1 && encrypt_mac) {
-                bytesRead = read(STDIN_FILENO, read_buf, 959);
-            } 
-            else if (flag == 1 && !encrypt_mac) {
-                bytesRead = read(STDIN_FILENO, read_buf, 991);
-            } 
-            else {
-                bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
-            }
-            // check if we're within the send window
-            if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
-                fprintf(stderr, "current packet num %d\n", curr_packet_num);
-
-                // create a new packet
-                Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
-                new_packet->packet_number = curr_packet_num;
-                new_packet->acknowledgment_number = 0;
-
-                // encrypt data 
-                if (flag == 1) {
-                    size_t block_size = EVP_CIPHER_block_size(EVP_aes_256_cbc());
-                    size_t cipher_buf_size = bytesRead + (block_size - (bytesRead % block_size));
-                    fprintf(stderr, "cipher buf size: %ld \n", cipher_buf_size);
-                    char *cipher = (char *)malloc(cipher_buf_size);
-                    char iv[IV_SIZE];
-
-                    // BUGGY -- SEGFAULT / INVALID POINTER ERROR HAPPENS HERE
-                    size_t cipher_size = encrypt_data(read_buf, bytesRead, iv, cipher, 0);
-                    fprintf(stderr, "cipher size: %ld \n", cipher_size);
-
-                    // BUGGY -- SEGFAULT HAPPENS HERE
-
-                    // create encrypted data message
-                    // no mac 
-                    if (!encrypt_mac) {
-                        EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size);
-                        encrypt_data->payload_size = cipher_size;
-                        encrypt_data->padding = 0;
-                        memcpy(encrypt_data->init_vector, iv, IV_SIZE);
-                        memcpy(encrypt_data->data, cipher, cipher_size);
-
-                        encrypt_data -> header.msg_type = DATA; 
-                        encrypt_data -> header.padding = 0; 
-                        encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size - sizeof(SecurityHeader); 
-
-                        // populate udp packet
-                        new_packet->payload_size = sizeof(EncryptedData) + cipher_size;
-                        memcpy(new_packet->data, encrypt_data, sizeof(EncryptedData) + cipher_size);
-                        
-                        free(encrypt_data);
-                    }
-                    // mac (so hungry i need a big mac rn)
-                    // this is causing me to lose braincells.
-                    else {
-                        EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
-                        encrypt_data->payload_size = cipher_size + MAC_SIZE;
-                        encrypt_data->padding = 0;
-                        memcpy(encrypt_data->init_vector, iv, IV_SIZE);
-                        memcpy(encrypt_data->data, cipher, cipher_size);
-
-                        // hmac over the iv + encrypted payload
-                        size_t total_size = IV_SIZE + cipher_size;
-                        char *concatenated_data = (char *)malloc(total_size);
-                        memcpy(concatenated_data, iv, IV_SIZE);
-                        memcpy(concatenated_data + IV_SIZE, cipher, cipher_size);
-                        char mac[MAC_SIZE];
-                        hmac(concatenated_data, total_size, mac);
-                        memcpy(encrypt_data->data + cipher_size, mac, MAC_SIZE);
-                        fprintf(stderr, "HMAC over data: %.*s\n", MAC_SIZE, mac);
-
-                        encrypt_data -> header.msg_type = DATA; 
-                        encrypt_data -> header.padding = 0; 
-                        encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader); 
-
-                        // populate udp packet
-                        new_packet->payload_size = sizeof(EncryptedData) + cipher_size + MAC_SIZE;
-                        memcpy(new_packet->data, encrypt_data, sizeof(EncryptedData) + cipher_size + MAC_SIZE);
-                        
-                        free(encrypt_data);
-                    }
-                }
-                // non-encrypted data
-                else {
-                    new_packet->payload_size = bytesRead;
-                    memcpy(new_packet->data, read_buf, bytesRead);
-                }
-
-                input_window[curr_packet_num] = new_packet;
-                curr_packet_num += 1;
-
-                // send the packet
+            // printf("HER\n");
+            Packet* new_packet = read_from_stdin(flag, encrypt_mac, input_window, curr_packet_num, input_left, input_right, timer_active, timer_start);
+            
+            // send the packet
+            if (new_packet != NULL) {
                 int did_send = sendto(sockfd, new_packet, sizeof(Packet) + new_packet->payload_size, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
                 if (did_send < 0) return errno;
-
+                
+                curr_packet_num += 1;
+                
                 // reset timer
                 if (!timer_active) {
                     timer_active = true;
@@ -425,6 +367,114 @@ int main(int argc, char *argv[]) {
     /* 8. You're done! Terminate the connection */     
     close(sockfd);
     return 0;
+}
+
+Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int &curr_packet_num, int input_left, int input_right, bool &timer_active, struct timeval &timer_start) {
+    char read_buf[BUF_SIZE];
+    memset(read_buf, 0, BUF_SIZE);
+    // read MAX_SEG_SIZE from stdin at a time
+    ssize_t bytesRead = 0;
+    if (flag == 1 && encrypt_mac) {
+        bytesRead = read(STDIN_FILENO, read_buf, 959);
+    } 
+    else if (flag == 1 && !encrypt_mac) {
+        bytesRead = read(STDIN_FILENO, read_buf, 991);
+    } 
+    else {
+        bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
+    }
+    // check if we're within the send window
+    if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
+        fprintf(stderr, "bytes read from stdin %ld\n", bytesRead);
+        fprintf(stderr, "current packet num %d\n", curr_packet_num);
+
+        // create a new packet
+        Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
+        new_packet->packet_number = curr_packet_num;
+        new_packet->acknowledgment_number = 0;
+
+        // encrypt data 
+        if (flag == 1) {
+            fprintf(stderr, "ENCRYPT DATA\n");
+            // output_size = input_size + (block_size - (input_size % block_size))
+
+            size_t block_size = EVP_CIPHER_block_size(EVP_aes_256_cbc());
+            size_t cipher_buf_size = bytesRead + (block_size - (bytesRead % block_size));
+            fprintf(stderr, "cipher buf size: %ld \n", cipher_buf_size);
+            char *cipher = (char *)malloc(cipher_buf_size);
+            char iv[IV_SIZE];
+            
+            // BUGGY -- SEGFAULT / INVALID POINTER ERROR HAPPENS HERE
+            size_t cipher_size = encrypt_data(read_buf, bytesRead, iv, cipher, 0);
+            fprintf(stderr, "cipher size: %ld \n", cipher_size);
+
+            // BUGGY -- DOUBLE FREE / INVALID POINTER HAPPENS SOMEWHERE HERE
+
+            // create encrypted data message
+            // no mac 
+            if (!encrypt_mac) {
+                EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size);
+                encrypt_data->payload_size = cipher_size;
+                encrypt_data->padding = 0;
+                memcpy(encrypt_data->init_vector, iv, IV_SIZE);
+                memcpy(encrypt_data->data, cipher, cipher_size);
+
+                encrypt_data -> header.msg_type = DATA; 
+                encrypt_data -> header.padding = 0; 
+                encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader);
+
+                // populate udp packet
+                new_packet->payload_size = sizeof(EncryptedData) + cipher_size;
+                memcpy(new_packet->data, encrypt_data, sizeof(EncryptedData) + cipher_size);
+                
+                free(cipher);
+                free(encrypt_data);
+            }
+            // mac (so hungry i need a big mac rn)
+            // this is causing me to lose braincells.
+            else {
+                EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
+                encrypt_data->payload_size = cipher_size + MAC_SIZE;
+                encrypt_data->padding = 0;
+                printf("meow1\n");
+                memcpy(encrypt_data->init_vector, iv, IV_SIZE);
+                printf("meow2\n");
+                memcpy(encrypt_data->data, cipher, cipher_size);
+
+                // hmac over the iv + encrypted payload
+                size_t total_size = IV_SIZE + cipher_size;
+                char *concatenated_data = (char *)malloc(total_size);
+                printf("meow3\n");
+                memcpy(concatenated_data, iv, IV_SIZE);
+                printf("meow4\n");
+                memcpy(concatenated_data + IV_SIZE, cipher, cipher_size);
+                char mac[MAC_SIZE];
+                hmac(concatenated_data, total_size, mac);
+                printf("meow5\n");
+                memcpy(encrypt_data->data + cipher_size, mac, MAC_SIZE);
+                fprintf(stderr, "HMAC over data: %.*s\n", MAC_SIZE, mac);
+                printf("meow6\n");
+                encrypt_data -> header.msg_type = DATA; 
+                encrypt_data -> header.padding = 0; 
+                encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader); 
+
+                // populate udp packet
+                new_packet->payload_size = sizeof(EncryptedData) + cipher_size + MAC_SIZE;
+                memcpy(new_packet->data, encrypt_data, sizeof(EncryptedData) + cipher_size + MAC_SIZE);
+                
+                // free(cipher);
+                // free(encrypt_data);
+            }
+        }
+        // non-encrypted data
+        else {
+            new_packet->payload_size = bytesRead;
+            memcpy(new_packet->data, read_buf, bytesRead);
+        }
+
+        return new_packet;
+    }
+    return NULL;
 }
 
 // send fin message to client
