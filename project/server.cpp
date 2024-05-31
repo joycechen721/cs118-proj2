@@ -107,7 +107,7 @@ int main(int argc, char *argv[]) {
         //security handshake
         if(handshake) { //if handshake still ongoing
             if(input_left == 1 && server_window[1] != NULL && input_window[1] == NULL){//can only make server hello if we recieve client hello and input window 0 is null
-                //fprintf(stderr, "RECEIVE CLIENT HELLO\n");
+                fprintf(stderr, "RECEIVE CLIENT HELLO\n");
                 Packet* client_hello_packet = server_window[1];
                 ClientHello *client_hello = (ClientHello *) client_hello_packet -> data;
                 uint8_t client_comm_type = client_hello->comm_type;
@@ -118,10 +118,10 @@ int main(int argc, char *argv[]) {
                 Packet* server_hello = create_server_hello(client_comm_type, client_nonce);
                 input_window[1] = server_hello;
                 ServerHello* srvh = (ServerHello*) input_window[1] -> data; 
-                //fprintf(stderr, "server hello size %ld\n", sizeof(Packet) + server_hello -> payload_size);
+                fprintf(stderr, "server hello size %ld\n", sizeof(Packet) + server_hello -> payload_size);
 
                 sendto(sockfd, server_hello, sizeof(Packet) + server_hello -> payload_size, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
-                //fprintf(stderr, "SENT SERVER HELLO\n");
+                fprintf(stderr, "SENT SERVER HELLO\n");
 
                 curr_packet_num += 1;
                 free(server_window[1]);
@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
                 left_pointer += 1;
             }
             else if(input_left == 2 && server_window[2] != NULL && input_window[2] == NULL){ //this means we have recieved 2nd ack + key exchange, need to parse it
-                //fprintf(stderr, "RECEIVED KEY EXCHANGE\n");
+                fprintf(stderr, "RECEIVED KEY EXCHANGE\n");
                 Packet* key_exchange_packet = server_window[2];
                 KeyExchangeRequest* key_exchange = (KeyExchangeRequest*) key_exchange_packet -> data; 
                 uint16_t client_cert_size = key_exchange->cert_size;
@@ -171,11 +171,11 @@ int main(int argc, char *argv[]) {
                 // create & send fin message
                 Packet* server_fin = create_fin();
                 input_window[2] = server_fin;
-                int did_send = sendto(sockfd, server_fin, sizeof(Packet) + server_fin -> payload_size , 0, (struct sockaddr *)&clientaddr, clientsize);
+                int did_send = sendto(sockfd, server_fin, sizeof(Packet) + ntohs(server_fin -> payload_size) , 0, (struct sockaddr *)&clientaddr, clientsize);
                 if (did_send < 0) {
                     perror("Failed to send server fin msg");
                 }
-                //fprintf(stderr, "SENT FIN\n");
+                fprintf(stderr, "SENT FIN\n");
 
                 curr_packet_num += 1;
                 free(server_window[2]);
@@ -261,7 +261,7 @@ int main(int argc, char *argv[]) {
                         uint8_t *payload = received_packet->data;
                         // decrypt data
                         if (flag == 1) {
-                            //fprintf(stderr, "receive encrypted data\n");
+                            fprintf(stderr, "receive encrypted data\n");
                             EncryptedData* encrypted = (EncryptedData*) payload;
                             uint16_t encrypted_data_size = encrypted->payload_size;
                             // data will be payload - mac size if no encrypt mac
@@ -327,17 +327,17 @@ int main(int argc, char *argv[]) {
                     }
                     // send data + ack
                     else {
-                        fprintf(stderr, "we are here.\n");
+                        // fprintf(stderr, "we are here.\n");
                         new_packet->acknowledgment_number = htonl(left_pointer);
-                        // input_window[curr_packet_num] = new_packet;
+                        input_window[curr_packet_num] = new_packet;
 
-                        input_window[curr_packet_num] = (Packet*)malloc(sizeof(Packet) + ntohs(new_packet->payload_size));
-                        if (input_window[curr_packet_num] == NULL) {
-                            perror("Memory allocation failed");
-                            close(sockfd);
-                            return 1;
-                        }
-                        memcpy(input_window[curr_packet_num], new_packet, sizeof(Packet) + ntohs(new_packet->payload_size));
+                        // input_window[curr_packet_num] = (Packet*)malloc(sizeof(Packet) + ntohs(new_packet->payload_size));
+                        // if (input_window[curr_packet_num] == NULL) {
+                        //     perror("Memory allocation failed");
+                        //     close(sockfd);
+                        //     return 1;
+                        // }
+                        // memcpy(input_window[curr_packet_num], new_packet, sizeof(Packet) + ntohs(new_packet->payload_size));
                         // fprintf(stderr, "meow: %d\n", ntohs(new_packet->payload_size));
                         curr_packet_num += 1;
 
@@ -368,14 +368,14 @@ int main(int argc, char *argv[]) {
             // send the packet
             if (new_packet != NULL) {
                 // fprintf(stderr, "creating new packet\n");
-                // input_window[curr_packet_num] = new_packet;
-                input_window[curr_packet_num] = (Packet*)malloc(sizeof(Packet) + ntohs(new_packet->payload_size));
-                if (input_window[curr_packet_num] == NULL) {
-                    perror("Memory allocation failed");
-                    close(sockfd);
-                    return 1;
-                }
-                memcpy(input_window[curr_packet_num], new_packet, sizeof(Packet) + ntohs(new_packet->payload_size));
+                input_window[curr_packet_num] = new_packet;
+                // input_window[curr_packet_num] = (Packet*)malloc(sizeof(Packet) + ntohs(new_packet->payload_size));
+                // if (input_window[curr_packet_num] == NULL) {
+                //     perror("Memory allocation failed");
+                //     close(sockfd);
+                //     return 1;
+                // }
+                // memcpy(input_window[curr_packet_num], new_packet, sizeof(Packet) + ntohs(new_packet->payload_size));
                 curr_packet_num += 1;
                 // fprintf(stderr, "meow: %d\n", ntohs(new_packet->payload_size));
                 int did_send = sendto(sockfd, new_packet, sizeof(Packet) + ntohs(new_packet->payload_size), 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
@@ -417,10 +417,10 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
     }
 
     if (bytesRead > 0) {
-        fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
-        fprintf(stderr, "current packet num %d\n", curr_packet_num);
-        fprintf(stderr, "input left: %d\n", input_left);
-        fprintf(stderr, "input right: %d\n", input_right);
+        // fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
+        // fprintf(stderr, "current packet num %d\n", curr_packet_num);
+        // fprintf(stderr, "input left: %d\n", input_left);
+        // fprintf(stderr, "input right: %d\n", input_right);
 
         // create a new packet
         Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
@@ -458,7 +458,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
                 encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader);
 
                 // populate udp packet
-                new_packet->payload_size = sizeof(EncryptedData) + cipher_size;
+                new_packet->payload_size = ntohs(sizeof(EncryptedData) + cipher_size);
                 memcpy(new_packet->data, encrypt_data, sizeof(EncryptedData) + cipher_size);
                 
                 free(cipher);
@@ -487,7 +487,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
                 encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader); 
 
                 // populate udp packet
-                new_packet->payload_size = sizeof(EncryptedData) + cipher_size + MAC_SIZE;
+                new_packet->payload_size = ntohs(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
                 memcpy(new_packet->data, encrypt_data, sizeof(EncryptedData) + cipher_size + MAC_SIZE);
                 
                 // free(cipher);
@@ -519,9 +519,9 @@ Packet *create_fin() {
     }
 
     // Fill in the packet fields
-    packet->packet_number = 2; 
-    packet -> acknowledgment_number = 0;
-    packet->payload_size = sizeof(Finished);
+    packet->packet_number = htonl(2); 
+    packet -> acknowledgment_number = htonl(0);
+    packet->payload_size = htons(sizeof(Finished));
     // packet->padding = 0;
     memcpy(packet->data, server_fin, sizeof(Finished));
 
@@ -587,10 +587,10 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
         free(server_hello);
         exit(EXIT_FAILURE);
     }
-    packet->packet_number = 1;
-    packet -> acknowledgment_number = 0;
+    packet->packet_number = htonl(1);
+    packet -> acknowledgment_number = htonl(0);
     memset(packet->padding, 0, sizeof(packet->padding));
-    packet->payload_size = server_hello_size;
+    packet->payload_size = htons(server_hello_size);
     memcpy(packet->data, server_hello, server_hello_size);
     free(server_hello);
     return packet;
