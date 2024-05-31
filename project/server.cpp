@@ -133,7 +133,7 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "RECEIVED KEY EXCHANGE\n");
                 Packet* key_exchange_packet = server_window[2];
                 KeyExchangeRequest* key_exchange = (KeyExchangeRequest*) key_exchange_packet -> data; 
-                uint16_t client_cert_size = key_exchange->cert_size;
+                uint16_t client_cert_size = ntohs(key_exchange->cert_size);
                 // Extract certificate from key_exchange-> data
                 uint8_t raw_cert_buf[client_cert_size];
                 memcpy(raw_cert_buf, key_exchange->data, client_cert_size);
@@ -560,7 +560,7 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
     memcpy(server_hello->server_nonce, server_nonce_buf, 32);
     // certificate
     memcpy(server_hello->data, certificate, cert_size);
-    server_hello->cert_size = cert_size;
+    server_hello->cert_size = htons(cert_size);
 
     char *server_nonce_sig = (char*)malloc(sig_size);
     sign((char*)client_nonce, 32, server_nonce_sig);

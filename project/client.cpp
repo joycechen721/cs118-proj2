@@ -131,7 +131,7 @@ int main(int argc, char *argv[])
                 uint8_t server_sig_size = (server_hello->sig_size);
                 
                 // extract server certificate
-                uint16_t server_cert_size = server_hello->cert_size;
+                uint16_t server_cert_size = ntohs(server_hello->cert_size);
                 // Check if the server certificate size is valid
                 if (server_cert_size == 0) {
                     //fprintf(stderr, "Invalid server certificate size: %u\n", server_cert_size);
@@ -632,11 +632,11 @@ Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed
     KeyExchangeRequest* key_exchange = (KeyExchangeRequest*) malloc(sizeof(KeyExchangeRequest) + sizeof(Certificate) + pub_key_size + self_signature_size + nonce_signature_size);
     // size of signature & certificate
     key_exchange -> sig_size = nonce_signature_size; 
-    key_exchange -> cert_size = sizeof(Certificate) + self_signature_size + pub_key_size;
+    key_exchange -> cert_size = htons(sizeof(Certificate) + self_signature_size + pub_key_size);
     // copy certificate into data
     memcpy(key_exchange->data, client_cert, sizeof(Certificate) + pub_key_size + self_signature_size); 
     // copy signature of server nonce into data
-    memcpy(key_exchange->data + key_exchange -> cert_size, nonce_signature, nonce_signature_size); 
+    memcpy(key_exchange->data + sizeof(Certificate) + self_signature_size + pub_key_size, nonce_signature, nonce_signature_size); 
     
     key_exchange -> header.msg_type = KEY_EXCHANGE_REQUEST; 
     key_exchange -> header.padding = 0; 
@@ -647,7 +647,7 @@ Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed
         free(key_exchange);
         return nullptr;
     }
-    memcpy(packet->data, key_exchange, sizeof(KeyExchangeRequest) + sizeof(Certificate) + key_exchange -> cert_size + key_exchange -> sig_size);
+    memcpy(packet->data, key_exchange, sizeof(KeyExchangeRequest) + sizeof(Certificate) + sizeof(Certificate) + self_signature_size + pub_key_size + key_exchange -> sig_size);
     packet->packet_number = htonl(2); // You may need to set this accordingly
     packet->acknowledgment_number = htonl(0); // You may need to set this accordingly
     packet->payload_size = htons(key_exchange -> header.msg_len);
