@@ -90,7 +90,7 @@ int main(int argc, char *argv[]) {
         //         // retransmit leftmost unacked packet if not NULL
         //         Packet* retransmit = input_window[input_left];
         //         if (retransmit) {
-        //             printf("Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
+        //             fprintf(stderr, "Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
         //             int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&clientaddr, clientsize);
         //             if (did_send < 0) {
         //                 perror("Retransmit failed");
@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
         //security handshake
         if(handshake) { //if handshake still ongoing
             if(input_left == 1 && server_window[1] != NULL && input_window[1] == NULL){//can only make server hello if we recieve client hello and input window 0 is null
-                printf("RECEIVE CLIENT HELLO\n");
+                fprintf(stderr, "RECEIVE CLIENT HELLO\n");
                 Packet* client_hello_packet = server_window[1];
                 ClientHello *client_hello = (ClientHello *) client_hello_packet -> data;
                 uint8_t client_comm_type = client_hello->comm_type;
@@ -115,19 +115,19 @@ int main(int argc, char *argv[]) {
                 Packet* server_hello = create_server_hello(client_comm_type, client_nonce);
                 input_window[1] = server_hello;
                 ServerHello* srvh = (ServerHello*) input_window[1] -> data; 
-                printf("server hello size %ld\n", sizeof(Packet) + server_hello -> payload_size);
+                fprintf(stderr, "server hello size %ld\n", sizeof(Packet) + server_hello -> payload_size);
 
                 sendto(sockfd, server_hello, sizeof(Packet) + server_hello -> payload_size, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
-                printf("SENT SERVER HELLO\n");
+                fprintf(stderr, "SENT SERVER HELLO\n");
 
                 curr_packet_num += 1;
                 free(server_window[1]);
                 server_window[1] = NULL;
-                // printf("Sleft pointer: %d\n", left_pointer);
+                // fprintf(stderr, "Sleft pointer: %d\n", left_pointer);
                 left_pointer += 1;
             }
             else if(input_left == 2 && server_window[2] != NULL && input_window[2] == NULL){ //this means we have recieved 2nd ack + key exchange, need to parse it
-                printf("RECEIVED KEY EXCHANGE\n");
+                fprintf(stderr, "RECEIVED KEY EXCHANGE\n");
                 Packet* key_exchange_packet = server_window[2];
                 KeyExchangeRequest* key_exchange = (KeyExchangeRequest*) key_exchange_packet -> data; 
                 uint16_t client_cert_size = key_exchange->cert_size;
@@ -172,7 +172,7 @@ int main(int argc, char *argv[]) {
                 if (did_send < 0) {
                     perror("Failed to send server fin msg");
                 }
-                printf("SENT FIN\n");
+                fprintf(stderr, "SENT FIN\n");
 
                 curr_packet_num += 1;
                 free(server_window[2]);
@@ -192,13 +192,13 @@ int main(int argc, char *argv[]) {
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
             uint16_t received_payload_size = (received_packet->payload_size);
             
-            printf("received packet #: %d\n", received_packet_number);
-            printf("received payload size: %d\n", received_payload_size);
+            fprintf(stderr, "received packet #: %d\n", received_packet_number);
+            fprintf(stderr, "received payload size: %d\n", received_payload_size);
             
             // receive data --> send an ack
             if (received_packet_number != 0) {
                 // Update window to reflect new packet
-                // printf("help%d\n", received_packet_number);
+                // fprintf(stderr, "help%d\n", received_packet_number);
                 server_window[received_packet_number] = (Packet*)malloc(sizeof(Packet) + received_payload_size);
                 if (server_window[received_packet_number] == NULL) {
                     perror("Memory allocation failed");
@@ -214,7 +214,7 @@ int main(int argc, char *argv[]) {
                         uint8_t *payload = received_packet->data;
                         // decrypt data
                         if (flag == 1) {
-                            printf("receive encrypted data\n");
+                            fprintf(stderr, "receive encrypted data\n");
                             EncryptedData* encrypted = (EncryptedData*) payload;
                             uint16_t encrypted_data_size = encrypted->payload_size;
                             // data will be payload - mac size if no encrypt mac
@@ -223,15 +223,15 @@ int main(int argc, char *argv[]) {
                             }
                             char* encrypted_data = (char*) malloc (encrypted_data_size);
                             memcpy(encrypted_data, encrypted->data, encrypted_data_size);
-                            printf("encrypted size %d: \n", encrypted_data_size);
+                            fprintf(stderr, "encrypted size %d: \n", encrypted_data_size);
                             
                             char iv[IV_SIZE];
                             memcpy(iv, (char*) encrypted->init_vector, IV_SIZE);
                             
                             char decrypted_data[encrypted_data_size];
                             size_t size = decrypt_cipher(encrypted_data, encrypted_data_size, iv, decrypted_data, 0);
-                            // printf("decrypted size %ld: \n", size);
-                            // printf("Decrypted plaintext: %.*s\n", (int) size, decrypted_data);
+                            // fprintf(stderr, "decrypted size %ld: \n", size);
+                            // fprintf(stderr, "Decrypted plaintext: %.*s\n", (int) size, decrypted_data);
 
                             // input_size = output_size - padding #
                             unsigned char padding_size = decrypted_data[encrypted_data_size - 1];
@@ -272,23 +272,23 @@ int main(int argc, char *argv[]) {
                     send_ACK(left_pointer, sockfd, clientaddr);
                 }
                 else{
-                    printf("revd pack num%d\n",received_packet_number );
+                    fprintf(stderr, "revd pack num%d\n",received_packet_number );
                     send_ACK(received_packet_number + 1, sockfd, clientaddr);
                 }
             } 
             // receive an ack --> update input window
             else {
-                printf("received ack: %d\n", received_ack_number);
+                fprintf(stderr, "received ack: %d\n", received_ack_number);
                 
                 // receive ack for fin
                 if (handshake && received_ack_number == 3) {
-                    printf("RECEIVED FIN ACK\n");
+                    fprintf(stderr, "RECEIVED FIN ACK\n");
                     handshake = false;
                     if (encrypt_mac) {
                         derive_keys();
 
-                        printf("Encryption key: %.*s\n", SECRET_SIZE, enc_key);
-                        printf("Authentication key: %.*s\n", SECRET_SIZE, mac_key);
+                        fprintf(stderr, "Encryption key: %.*s\n", SECRET_SIZE, enc_key);
+                        fprintf(stderr, "Authentication key: %.*s\n", SECRET_SIZE, mac_key);
                     }
                 }
 
@@ -319,10 +319,19 @@ int main(int argc, char *argv[]) {
         if (!handshake) {
             char read_buf[BUF_SIZE];
             memset(read_buf, 0, BUF_SIZE);
-            ssize_t bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
-            
+            ssize_t bytesRead = 0;
+            if (flag == 1 && encrypt_mac) {
+                bytesRead = read(STDIN_FILENO, read_buf, 959);
+            } 
+            else if (flag == 1 && !encrypt_mac) {
+                bytesRead = read(STDIN_FILENO, read_buf, 991);
+            } 
+            else {
+                bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
+            }
+            // check if we're within the send window
             if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
-                printf("current packet num %d\n", curr_packet_num);
+                fprintf(stderr, "current packet num %d\n", curr_packet_num);
 
                 // create a new packet
                 Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
@@ -333,13 +342,15 @@ int main(int argc, char *argv[]) {
                 if (flag == 1) {
                     size_t block_size = EVP_CIPHER_block_size(EVP_aes_256_cbc());
                     size_t cipher_buf_size = bytesRead + (block_size - (bytesRead % block_size));
-                    printf("cipher buf size: %ld \n", cipher_buf_size);
+                    fprintf(stderr, "cipher buf size: %ld \n", cipher_buf_size);
                     char *cipher = (char *)malloc(cipher_buf_size);
                     char iv[IV_SIZE];
 
-                    // BUGGY -- INVALID POINTER ERROR HAPPENS HERE
+                    // BUGGY -- SEGFAULT / INVALID POINTER ERROR HAPPENS HERE
                     size_t cipher_size = encrypt_data(read_buf, bytesRead, iv, cipher, 0);
-                    printf("cipher size: %ld \n", cipher_size);
+                    fprintf(stderr, "cipher size: %ld \n", cipher_size);
+
+                    // BUGGY -- SEGFAULT HAPPENS HERE
 
                     // create encrypted data message
                     // no mac 
@@ -352,7 +363,7 @@ int main(int argc, char *argv[]) {
 
                         encrypt_data -> header.msg_type = DATA; 
                         encrypt_data -> header.padding = 0; 
-                        encrypt_data -> header.msg_len = sizeof(encrypt_data); 
+                        encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size - sizeof(SecurityHeader); 
 
                         // populate udp packet
                         new_packet->payload_size = sizeof(EncryptedData) + cipher_size;
@@ -363,7 +374,7 @@ int main(int argc, char *argv[]) {
                     // mac (so hungry i need a big mac rn)
                     // this is causing me to lose braincells.
                     else {
-                        EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size);
+                        EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
                         encrypt_data->payload_size = cipher_size + MAC_SIZE;
                         encrypt_data->padding = 0;
                         memcpy(encrypt_data->init_vector, iv, IV_SIZE);
@@ -377,11 +388,11 @@ int main(int argc, char *argv[]) {
                         char mac[MAC_SIZE];
                         hmac(concatenated_data, total_size, mac);
                         memcpy(encrypt_data->data + cipher_size, mac, MAC_SIZE);
-                        printf("HMAC over data: %.*s\n", MAC_SIZE, mac);
+                        fprintf(stderr, "HMAC over data: %.*s\n", MAC_SIZE, mac);
 
                         encrypt_data -> header.msg_type = DATA; 
                         encrypt_data -> header.padding = 0; 
-                        encrypt_data -> header.msg_len = sizeof(encrypt_data); 
+                        encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader); 
 
                         // populate udp packet
                         new_packet->payload_size = sizeof(EncryptedData) + cipher_size + MAC_SIZE;
@@ -421,7 +432,7 @@ Packet *create_fin() {
     Finished* server_fin = (Finished*)malloc(sizeof(Finished));
     server_fin -> header.msg_type = FINISHED; 
     server_fin -> header.padding = 0; 
-    server_fin -> header.msg_len = sizeof(server_fin) - sizeof(SecurityHeader); 
+    server_fin -> header.msg_len = sizeof(Finished) - sizeof(SecurityHeader); 
     Packet* packet = (Packet*)malloc(sizeof(Packet) + sizeof(Finished));
     if (!packet) {
         perror("Failed to allocate memory for packet");
@@ -436,7 +447,7 @@ Packet *create_fin() {
     // packet->padding = 0;
     memcpy(packet->data, server_fin, sizeof(Finished));
 
-    printf("size of fin packet: %d\n", packet->payload_size);
+    fprintf(stderr, "size of fin packet: %d\n", packet->payload_size);
 
     // Free the temporary Finished message memory
     free(server_fin);
@@ -485,11 +496,11 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
     }
     fclose(nonce);
     memcpy(server_hello->data + cert_size, server_nonce_sig, sig_size);
-    printf("sig size %ld\n", cert_size + sig_size);   
+    fprintf(stderr, "sig size %ld\n", cert_size + sig_size);   
 
     server_hello->sig_size = sig_size;
     free(server_nonce_sig);
-    server_hello -> header.msg_len = sizeof(server_hello) - sizeof(SecurityHeader);
+    server_hello -> header.msg_len = sizeof(ServerHello) + sizeof(Certificate) + cert_size + sig_size - sizeof(SecurityHeader);
 
     size_t server_hello_size = sizeof(ServerHello) + cert_size + sig_size;
     Packet* packet = (Packet*)malloc(sizeof(Packet) + server_hello_size);
