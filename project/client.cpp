@@ -96,7 +96,7 @@ int main(int argc, char *argv[])
                 // retransmit leftmost unacked packet if not NULL
                 Packet* retransmit = input_window[input_left];
                 if (retransmit) {
-                    fprintf(stderr, "Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
+                    //fprintf(stderr, "Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
                     int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&serveraddr, serversize);
                     if (did_send < 0) {
                         perror("Retransmit failed");
@@ -113,15 +113,15 @@ int main(int argc, char *argv[])
                 input_window[curr_packet_num] = create_client_hello((char*) client_nonce_buf); //create client hello if not yet created
                 sendto(sockfd, input_window[curr_packet_num], sizeof(ClientHello), 0, (struct sockaddr *)&serveraddr, serversize); //send packet
                 curr_packet_num += 1;
-                fprintf(stderr, "SENT CLIENT HELLO\n");
+                //fprintf(stderr, "SENT CLIENT HELLO\n");
             }
             else if(curr_packet_num == 2 && server_window[1] != NULL && input_window[2] == NULL){ //create the exchange message if recieved an serverhello/ack from server, server send the hello, and input window null
-                fprintf(stderr, "RECEIVED SERVER HELLO\n");
+                //fprintf(stderr, "RECEIVED SERVER HELLO\n");
                 Packet* server_hello_packet = server_window[1];
                 ServerHello *server_hello = (ServerHello *) server_hello_packet -> data;
                 SecurityHeader* header = &server_hello -> header;
                 if (header->msg_type != SERVER_HELLO) {
-                    fprintf(stderr, "Expected SERVER_HELLO, but got message type: %u\n", header->msg_type);
+                    //fprintf(stderr, "Expected SERVER_HELLO, but got message type: %u\n", header->msg_type);
                     close(sockfd);
                     return 1;
                 }
@@ -132,7 +132,7 @@ int main(int argc, char *argv[])
                 uint16_t server_cert_size = server_hello->cert_size;
                 // Check if the server certificate size is valid
                 if (server_cert_size == 0) {
-                    fprintf(stderr, "Invalid server certificate size: %u\n", server_cert_size);
+                    //fprintf(stderr, "Invalid server certificate size: %u\n", server_cert_size);
                     close(sockfd);
                     exit(EXIT_FAILURE);
                 }
@@ -141,13 +141,13 @@ int main(int argc, char *argv[])
                 
                 Certificate* server_cert = (Certificate*) raw_cert_buf;
                 int key_len = ntohs(server_cert->key_len);
-                fprintf(stderr, "certificate key length HERE%d\n", key_len);
-                fprintf(stderr, "certificate length %u\n", server_cert_size);
-                fprintf(stderr, "signature length %d\n", server_sig_size);
+                //fprintf(stderr, "certificate key length HERE%d\n", key_len);
+                //fprintf(stderr, "certificate length %u\n", server_cert_size);
+                //fprintf(stderr, "signature length %d\n", server_sig_size);
 
                 uint8_t server_nonce[32] = {0};
                 memcpy(server_nonce, server_hello->server_nonce, 32);
-                fprintf(stderr, "server nonce length %ld\n", sizeof(server_nonce));
+                //fprintf(stderr, "server nonce length %ld\n", sizeof(server_nonce));
 
                 // extract server signature
                 char* client_nonce_signed = (char*) malloc (server_sig_size);
@@ -155,7 +155,7 @@ int main(int argc, char *argv[])
 
                 uint8_t* pub_key = (uint8_t*)malloc(key_len);
                 if (pub_key == NULL) {
-                    fprintf(stderr, "Memory allocation failed for client nonce signed.\n");
+                    //fprintf(stderr, "Memory allocation failed for client nonce signed.\n");
                     close(sockfd);
                     exit(EXIT_FAILURE);
                 }
@@ -193,7 +193,7 @@ int main(int argc, char *argv[])
                 free(server_window[1]);
                 server_window[1] = NULL;
                 left_pointer += 1;
-                fprintf(stderr, "SENT KEY EXCHANGE\n");
+                //fprintf(stderr, "SENT KEY EXCHANGE\n");
             }
         }
 
@@ -208,13 +208,13 @@ int main(int argc, char *argv[])
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
             uint16_t received_payload_size = ntohs(received_packet->payload_size);
             
-            fprintf(stderr, "received ack #: %d\n", received_ack_number);
-            fprintf(stderr, "received packet #: %d\n", received_packet_number);
-            fprintf(stderr, "received payload size: %d\n", received_payload_size);
+            //fprintf(stderr, "received ack #: %d\n", received_ack_number);
+            //fprintf(stderr, "received packet #: %d\n", received_packet_number);
+            //fprintf(stderr, "received payload size: %d\n", received_payload_size);
 
             // receive an ack --> update input window
             if (received_ack_number != 0) {
-                fprintf(stderr, "received ack: %d\n", received_ack_number);
+                //fprintf(stderr, "received ack: %d\n", received_ack_number);
                 // if(received_ack_number == 3 && handshake){
                 //     handshake = false;
                 // }
@@ -222,20 +222,20 @@ int main(int argc, char *argv[])
                     // free packets from input_left to ack #
                     for (int i = input_left; i < received_ack_number; i++) {
                         if (input_window[i] != NULL) {
-                            fprintf(stderr, "HAHAHA\n");
+                            //fprintf(stderr, "HAHAHA\n");
                             free(input_window[i]);
                             
                             input_window[i] = NULL;
                         }
                     }
-                    fprintf(stderr, "HAHAHA2\n");
+                    //fprintf(stderr, "HAHAHA2\n");
                     input_left = received_ack_number;
                     input_right = 20 + input_left;
-                    // fprintf(stderr, "input right: %d\n", input_right);
+                    // //fprintf(stderr, "input right: %d\n", input_right);
 
                     // cancel timer if no unacked packets
                     if (input_left == curr_packet_num) {
-                        fprintf(stderr, "no unacked packets in window\n");
+                        //fprintf(stderr, "no unacked packets in window\n");
                         timer_active = false;
                     } 
                     // reset timer otherwise
@@ -248,7 +248,7 @@ int main(int argc, char *argv[])
             // also receive data --> send an ack
             if (received_packet_number != 0) {
                 // Update window to reflect new packet
-                // fprintf(stderr, "RECEIVE DATA (NON ACK) %d\n", received_packet_number);
+                // //fprintf(stderr, "RECEIVE DATA (NON ACK) %d\n", received_packet_number);
                 server_window[received_packet_number] = (Packet*)malloc(sizeof(Packet) + received_payload_size);
                 if (server_window[received_packet_number] == NULL) {
                     perror("Memory allocation failed");
@@ -265,7 +265,7 @@ int main(int argc, char *argv[])
                         uint8_t *payload = received_packet->data;
                         // decrypt data
                         if (flag == 1) {
-                            fprintf(stderr, "receive encrypted data\n");
+                            //fprintf(stderr, "receive encrypted data\n");
                             EncryptedData* encrypted = (EncryptedData*) payload;
                             uint16_t encrypted_data_size = encrypted->payload_size;
                             // data will be payload - mac size if no encrypt mac
@@ -274,14 +274,14 @@ int main(int argc, char *argv[])
                             }
                             char* encrypted_data = (char*) malloc (encrypted_data_size);
                             memcpy(encrypted_data, encrypted->data, encrypted_data_size);
-                            // fprintf(stderr, "encrypted size %d: \n", encrypted_data_size);
+                            // //fprintf(stderr, "encrypted size %d: \n", encrypted_data_size);
                             
                             char iv[IV_SIZE];
                             memcpy(iv, (char*) encrypted->init_vector, IV_SIZE);
                             
                             char decrypted_data[encrypted_data_size];
                             size_t size = decrypt_cipher(encrypted_data, encrypted_data_size, iv, decrypted_data, 0);
-                            // fprintf(stderr, "Decrypted plaintext: %.*s\n", (int) size, decrypted_data);
+                            // //fprintf(stderr, "Decrypted plaintext: %.*s\n", (int) size, decrypted_data);
 
                             unsigned char padding_size = decrypted_data[encrypted_data_size - 1];
 
@@ -291,12 +291,12 @@ int main(int argc, char *argv[])
                                 memcpy(mac_code, encrypted->data + encrypted_data_size, MAC_SIZE);
 
                                 if (!verify((char *) decrypted_data, size - padding_size, (char*) mac_code, MAC_SIZE, ec_peer_public_key)) {
-                                    fprintf(stderr, "Verification of packet mac code failed.\n");
+                                    //fprintf(stderr, "Verification of packet mac code failed.\n");
                                     free(mac_code);
                                     close(sockfd);
                                     exit(EXIT_FAILURE);
                                 }
-                                fprintf(stderr, "Verification of packet mac code succeeded.\n");
+                                //fprintf(stderr, "Verification of packet mac code succeeded.\n");
                                 free(mac_code);
                             }
 
@@ -306,7 +306,7 @@ int main(int argc, char *argv[])
                         }
                         // not encrypted data
                         else {
-                            fprintf(stdout, "%.*s", received_payload_size, payload);
+                            //fprintf(stdout, "%.*s", received_payload_size, payload);
                             fflush(stdout);
                         }
                         if (server_window[left_pointer] != NULL) {
@@ -349,13 +349,13 @@ int main(int argc, char *argv[])
                 // receive fin 
                 else {
                     if (curr_packet_num == 3) {
-                        fprintf(stderr, "RECEIVED FIN \n");
+                        //fprintf(stderr, "RECEIVED FIN \n");
                         handshake = false;
                         if (encrypt_mac) {
                             derive_keys();
 
-                            fprintf(stderr, "Encryption key: %.*s\n", SECRET_SIZE, enc_key);
-                            fprintf(stderr, "Authentication key: %.*s\n", SECRET_SIZE, mac_key);
+                            //fprintf(stderr, "Encryption key: %.*s\n", SECRET_SIZE, enc_key);
+                            //fprintf(stderr, "Authentication key: %.*s\n", SECRET_SIZE, mac_key);
                         }
                         free(server_window[2]);
                         server_window[2] = NULL;
@@ -373,7 +373,7 @@ int main(int argc, char *argv[])
             // send the packet
             if (new_packet != NULL) {
                 int did_send = sendto(sockfd, new_packet, sizeof(Packet) + ntohs(new_packet->payload_size), 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
-                fprintf(stderr, "did_send size %d: \n", did_send);
+                //fprintf(stderr, "did_send size %d: \n", did_send);
                 if (did_send < 0) return errno;
 
                 curr_packet_num += 1;
@@ -414,15 +414,15 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
     }
     // check if we're within the send window
     if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
-        fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
-        fprintf(stderr, "current packet num %d\n", curr_packet_num);
+        //fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
+        //fprintf(stderr, "current packet num %d\n", curr_packet_num);
     
         // Print the contents of read_buf
-        // fprintf(stderr, "read_buf contents:\n");
+        // //fprintf(stderr, "read_buf contents:\n");
         // for (ssize_t i = 0; i < bytesRead; ++i) {
-        //     fprintf(stderr, "%c", read_buf[i]);
+        //     //fprintf(stderr, "%c", read_buf[i]);
         // }
-        // fprintf(stderr, "\n");
+        // //fprintf(stderr, "\n");
 
         // create a new packet
         Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
@@ -431,18 +431,18 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
 
         // encrypt data 
         if (flag == 1) {
-            fprintf(stderr, "ENCRYPT DATA\n");
+            //fprintf(stderr, "ENCRYPT DATA\n");
             // output_size = input_size + (block_size - (input_size % block_size))
 
             size_t block_size = EVP_CIPHER_block_size(EVP_aes_256_cbc());
             size_t cipher_buf_size = bytesRead + (block_size - (bytesRead % block_size));
-            fprintf(stderr, "cipher buf size: %ld \n", cipher_buf_size);
+            //fprintf(stderr, "cipher buf size: %ld \n", cipher_buf_size);
             char *cipher = (char *)malloc(cipher_buf_size);
             char iv[IV_SIZE];
             
             // BUGGY -- SEGFAULT / INVALID POINTER ERROR HAPPENS HERE
             size_t cipher_size = encrypt_data(read_buf, bytesRead, iv, cipher, 0);
-            fprintf(stderr, "cipher size: %ld \n", cipher_size);
+            //fprintf(stderr, "cipher size: %ld \n", cipher_size);
 
             // BUGGY -- DOUBLE FREE / INVALID POINTER HAPPENS SOMEWHERE HERE
 
@@ -483,7 +483,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
                 char mac[MAC_SIZE];
                 hmac(concatenated_data, total_size, mac);
                 memcpy(encrypt_data->data + cipher_size, mac, MAC_SIZE);
-                fprintf(stderr, "HMAC over data: %.*s\n", MAC_SIZE, mac);
+                //fprintf(stderr, "HMAC over data: %.*s\n", MAC_SIZE, mac);
                 encrypt_data -> header.msg_type = DATA; 
                 encrypt_data -> header.padding = 0; 
                 encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader); 
@@ -517,7 +517,7 @@ void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in servera
 Packet *create_client_hello(char* client_nonce_buf){
     ClientHello* client_hello = (ClientHello*)malloc(sizeof(ClientHello));
     if (client_hello == nullptr) {
-        fprintf(stderr, "Memory allocation failed for ClientHello.\n");
+        //fprintf(stderr, "Memory allocation failed for ClientHello.\n");
         return nullptr;
     }
     // Initialize comm_type based on flag
@@ -532,10 +532,10 @@ Packet *create_client_hello(char* client_nonce_buf){
     client_hello -> header.msg_type = CLIENT_HELLO; 
     client_hello -> header.padding = 0; 
     client_hello -> header.msg_len = sizeof(ClientHello) - sizeof(SecurityHeader); 
-    fprintf(stderr, "ch size %ld\n", sizeof(client_hello) - sizeof(SecurityHeader));
+    //fprintf(stderr, "ch size %ld\n", sizeof(client_hello) - sizeof(SecurityHeader));
     Packet *packet = (Packet *)malloc(sizeof(Packet) + sizeof(client_hello));
     if (packet == nullptr) {
-        fprintf(stderr, "Memory allocation failed for Packet.\n");
+        //fprintf(stderr, "Memory allocation failed for Packet.\n");
         free(client_hello);
         return nullptr;
     }
@@ -551,23 +551,23 @@ Packet *create_client_hello(char* client_nonce_buf){
 Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed_nonce, size_t signed_nonce_size, Certificate* server_cert, int sockfd, struct sockaddr_in serveraddr) {
     load_peer_public_key((char*) server_cert->data, server_cert->key_len);
     if(ec_peer_public_key == NULL){
-        fprintf(stderr, "errrrrm what the sigma\n");
+        //fprintf(stderr, "errrrrm what the sigma\n");
     }
 
     uint16_t key_len = ntohs(server_cert -> key_len);
     uint8_t *server_public_key = server_cert -> data;
     size_t signature_len = cert_size - (2 * sizeof(uint16_t) + key_len);
     uint8_t *signature = server_public_key + key_len;
-    fprintf(stderr, "server cert key len %d\n", key_len);
+    //fprintf(stderr, "server cert key len %d\n", key_len);
     // Verify server signature inside of the certificate
     if (!verify((char *) server_public_key, key_len, (char*) signature, signature_len, ec_ca_public_key)) {
-        fprintf(stderr, "Verification of server certificate failed.\n");
+        //fprintf(stderr, "Verification of server certificate failed.\n");
         close(sockfd);
         exit(EXIT_FAILURE);
     }
 
     if (!verify((char*) client_nonce, 32, (char*)signed_nonce, signed_nonce_size, ec_peer_public_key)) {
-        fprintf(stderr, "Verification of signature failed.\n");
+        //fprintf(stderr, "Verification of signature failed.\n");
         close(sockfd);
         exit(EXIT_FAILURE);
     }
@@ -584,7 +584,7 @@ Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed
     // Allocate memory for client certificate
     Certificate* client_cert = (Certificate*)malloc(sizeof(Certificate) + pub_key_size + self_signature_size);
     if (client_cert == NULL) {
-        fprintf(stderr, "Failed to allocate memory for client certificate.\n");
+        //fprintf(stderr, "Failed to allocate memory for client certificate.\n");
         close(sockfd);
         exit(EXIT_FAILURE);
     }
@@ -605,7 +605,7 @@ Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed
     sign((char*)client_nonce, sizeof(*client_nonce), nonce_signature);
 
     if (nonce_signature == NULL) {
-        fprintf(stderr, "Failed to sign the server nonce.\n");
+        //fprintf(stderr, "Failed to sign the server nonce.\n");
         free(nonce_signature);
         close(sockfd);
         exit(EXIT_FAILURE);
@@ -626,7 +626,7 @@ Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed
     key_exchange -> header.msg_len = sizeof(key_exchange) - sizeof(SecurityHeader) + nonce_signature_size + sizeof(Certificate) + pub_key_size + self_signature_size; //may be wrong
     Packet *packet = (Packet *)malloc(sizeof(Packet) + key_exchange -> header.msg_len);
     if (packet == nullptr) {
-        fprintf(stderr, "Memory allocation failed for Packet.\n");
+        //fprintf(stderr, "Memory allocation failed for Packet.\n");
         free(key_exchange);
         return nullptr;
     }
