@@ -198,8 +198,8 @@ int main(int argc, char *argv[])
         }
 
         // listen to socket for incoming packets from server
-        char server_buf[BUF_SIZE];
-        int bytes_recvd = recvfrom(sockfd, server_buf, BUF_SIZE, 0, (struct sockaddr*)&serveraddr, &serversize);
+        char server_buf[BUF_SIZE + 12];
+        int bytes_recvd = recvfrom(sockfd, server_buf, BUF_SIZE + 12, 0, (struct sockaddr*)&serveraddr, &serversize);
         
         if (bytes_recvd > 0) {
             printf("incoming packet from server\n");
@@ -499,6 +499,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
         // non-encrypted data
         else {
             new_packet->payload_size = htons((uint16_t)bytesRead);
+            fprintf(stderr, "BYTES READ %d\n", ((uint16_t)bytesRead));
             memcpy(new_packet->data, read_buf, bytesRead);
         }
 

@@ -183,9 +183,9 @@ int main(int argc, char *argv[]) {
         }
 
         // listen to socket for incoming data from client
-        char client_buf[BUF_SIZE];
+        char client_buf[BUF_SIZE+12];
         socklen_t clientsize = sizeof(clientaddr);
-        int bytes_recvd = recvfrom(sockfd, client_buf, BUF_SIZE, 0, (struct sockaddr*) &clientaddr, &clientsize);
+        int bytes_recvd = recvfrom(sockfd, client_buf, BUF_SIZE + 12, 0, (struct sockaddr*) &clientaddr, &clientsize);
         
         if (bytes_recvd > 0) {
             //fprintf(stderr, "incoming packet from client\n");
@@ -196,7 +196,7 @@ int main(int argc, char *argv[]) {
             
             //fprintf(stderr, "received ack #: %d\n", received_ack_number);
             //fprintf(stderr, "received packet #: %d\n", received_packet_number);
-            //fprintf(stderr, "received payload size: %d\n", received_payload_size);
+            fprintf(stderr, "received payload size: %d\n", received_payload_size);
 
             // receive an ack --> update input window
             if (received_ack_number != 0) {
@@ -292,15 +292,16 @@ int main(int argc, char *argv[]) {
                                 //fprintf(stderr, "Verification of packet mac code succeeded.\n");
                                 free(mac_code);
                             }
-
                             write(1, decrypted_data, size - padding_size);
 
                             free(encrypted_data);
                         }
                         // not encrypted data
                         else {
-                            fprintf(stdout, "%.*s", received_payload_size, payload);
-                            fflush(stdout);
+                            fprintf(stderr, "sdfadfd %d", received_payload_size);
+                            write(1, payload, received_payload_size);
+                            // fprintf(stdout, "%.*s", received_payload_size, payload);
+                            // fflush(stdout);
                         }
                         if (server_window[left_pointer] != NULL) {
                             free(server_window[left_pointer]);
