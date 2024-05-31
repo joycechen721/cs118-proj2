@@ -299,7 +299,7 @@ int main(int argc, char *argv[]) {
                             }
                             write(1, decrypted_data, size - padding_size);
 
-                            free(encrypted_data);
+                            // free(encrypted_data);
                         }
                         // not encrypted data
                         else {
