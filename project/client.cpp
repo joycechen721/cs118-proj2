@@ -370,7 +370,7 @@ int main(int argc, char *argv[])
             
             // send the packet
             if (new_packet != NULL) {
-                int did_send = sendto(sockfd, new_packet, sizeof(Packet) + new_packet->payload_size, 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
+                int did_send = sendto(sockfd, new_packet, sizeof(Packet) + ntohs(new_packet->payload_size), 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
                 fprintf(stderr, "did_send size %d: \n", did_send);
                 if (did_send < 0) return errno;
 

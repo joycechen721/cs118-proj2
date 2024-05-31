@@ -194,6 +194,7 @@ int main(int argc, char *argv[]) {
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
             uint16_t received_payload_size = ntohs(received_packet->payload_size);
             
+            fprintf(stderr, "received ack #: %d\n", received_ack_number);
             fprintf(stderr, "received packet #: %d\n", received_packet_number);
             fprintf(stderr, "received payload size: %d\n", received_payload_size);
 
@@ -351,7 +352,7 @@ int main(int argc, char *argv[]) {
             
             // send the packet
             if (new_packet != NULL) {
-                int did_send = sendto(sockfd, new_packet, sizeof(Packet) + new_packet->payload_size, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
+                int did_send = sendto(sockfd, new_packet, sizeof(Packet) + ntohs(new_packet->payload_size), 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
                 if (did_send < 0) return errno;
                 
                 curr_packet_num += 1;
