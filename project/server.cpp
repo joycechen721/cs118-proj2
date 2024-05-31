@@ -188,7 +188,7 @@ int main(int argc, char *argv[]) {
         int bytes_recvd = recvfrom(sockfd, client_buf, BUF_SIZE, 0, (struct sockaddr*) &clientaddr, &clientsize);
         
         if (bytes_recvd > 0) {
-            printf("incoming packet from client\n");
+            fprintf(stderr, "incoming packet from client\n");
             Packet* received_packet = (Packet*)client_buf;
             uint32_t received_packet_number = (received_packet->packet_number);
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
@@ -355,7 +355,7 @@ int main(int argc, char *argv[]) {
                 if (did_send < 0) return errno;
                 
                 curr_packet_num += 1;
-                
+
                 // reset timer
                 if (!timer_active) {
                     timer_active = true;
@@ -436,24 +436,18 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
                 EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
                 encrypt_data->payload_size = cipher_size + MAC_SIZE;
                 encrypt_data->padding = 0;
-                printf("meow1\n");
                 memcpy(encrypt_data->init_vector, iv, IV_SIZE);
-                printf("meow2\n");
                 memcpy(encrypt_data->data, cipher, cipher_size);
 
                 // hmac over the iv + encrypted payload
                 size_t total_size = IV_SIZE + cipher_size;
                 char *concatenated_data = (char *)malloc(total_size);
-                printf("meow3\n");
                 memcpy(concatenated_data, iv, IV_SIZE);
-                printf("meow4\n");
                 memcpy(concatenated_data + IV_SIZE, cipher, cipher_size);
                 char mac[MAC_SIZE];
                 hmac(concatenated_data, total_size, mac);
-                printf("meow5\n");
                 memcpy(encrypt_data->data + cipher_size, mac, MAC_SIZE);
                 fprintf(stderr, "HMAC over data: %.*s\n", MAC_SIZE, mac);
-                printf("meow6\n");
                 encrypt_data -> header.msg_type = DATA; 
                 encrypt_data -> header.padding = 0; 
                 encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader); 

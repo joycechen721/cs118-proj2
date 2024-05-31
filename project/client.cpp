@@ -462,9 +462,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
                 EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
                 encrypt_data->payload_size = cipher_size + MAC_SIZE;
                 encrypt_data->padding = 0;
-                printf("meow1\n");
                 memcpy(encrypt_data->init_vector, iv, IV_SIZE);
-                printf("meow2\n");
                 memcpy(encrypt_data->data, cipher, cipher_size);
 
                 // hmac over the iv + encrypted payload
