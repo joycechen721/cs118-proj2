@@ -89,25 +89,25 @@ int main(int argc, char *argv[])
 
     while(true){
         // retransmission from rto
-        if (timer_active) {
-            struct timeval now;
-            gettimeofday(&now, NULL);
-            double elapsed_time = (now.tv_sec - timer_start.tv_sec) + (now.tv_usec - timer_start.tv_usec) / 1e6;
-            // timer expired
-            if (elapsed_time >= RTO) {
-                // retransmit leftmost unacked packet if not NULL
-                Packet* retransmit = input_window[input_left];
-                if (retransmit) {
-                    //fprintf(stderr, "Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
-                    int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&serveraddr, serversize);
-                    if (did_send < 0) {
-                        perror("Retransmit failed");
-                    }
-                }
-                // reset timer
-                gettimeofday(&timer_start, NULL);
-            }
-        }
+        // if (timer_active) {
+        //     struct timeval now;
+        //     gettimeofday(&now, NULL);
+        //     double elapsed_time = (now.tv_sec - timer_start.tv_sec) + (now.tv_usec - timer_start.tv_usec) / 1e6;
+        //     // timer expired
+        //     if (elapsed_time >= RTO) {
+        //         // retransmit leftmost unacked packet if not NULL
+        //         Packet* retransmit = input_window[input_left];
+        //         if (retransmit) {
+        //             //fprintf(stderr, "Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
+        //             int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&serveraddr, serversize);
+        //             if (did_send < 0) {
+        //                 perror("Retransmit failed");
+        //             }
+        //         }
+        //         // reset timer
+        //         gettimeofday(&timer_start, NULL);
+        //     }
+        // }
 
         //security handshake
         if(handshake){ // start handshake, assume acks are incrementing curr pack num
@@ -210,9 +210,9 @@ int main(int argc, char *argv[])
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
             uint16_t received_payload_size = ntohs(received_packet->payload_size);
             
-            //fprintf(stderr, "received ack #: %d\n", received_ack_number);
-            //fprintf(stderr, "received packet #: %d\n", received_packet_number);
-            //fprintf(stderr, "received payload size: %d\n", received_payload_size);
+            fprintf(stderr, "received ack #: %d\n", received_ack_number);
+            fprintf(stderr, "received packet #: %d\n", received_packet_number);
+            fprintf(stderr, "received payload size: %d\n", received_payload_size);
 
             // receive an ack --> update input window
             if (received_ack_number != 0) {
@@ -334,7 +334,7 @@ int main(int argc, char *argv[])
                         new_packet->acknowledgment_number = htonl(left_pointer);
                         input_window[curr_packet_num] = new_packet;
                         curr_packet_num += 1;
-                        
+
                         // send the packet
                         int did_send = sendto(sockfd, new_packet, sizeof(Packet) + ntohs(new_packet->payload_size), 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
                         if (did_send < 0) return errno;
@@ -374,11 +374,19 @@ int main(int argc, char *argv[])
             
             // send the packet
             if (new_packet != NULL) {
+                // input_window[curr_packet_num] = new_packet;
+                input_window[curr_packet_num] = (Packet*)malloc(sizeof(Packet) + ntohs(new_packet->payload_size));
+                if (input_window[curr_packet_num] == NULL) {
+                    perror("Memory allocation failed");
+                    close(sockfd);
+                    return 1;
+                }
+                memcpy(input_window[curr_packet_num], new_packet, sizeof(Packet) + ntohs(new_packet->payload_size));
+                curr_packet_num += 1;
+
                 int did_send = sendto(sockfd, new_packet, sizeof(Packet) + ntohs(new_packet->payload_size), 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
                 //fprintf(stderr, "did_send size %d: \n", did_send);
                 if (did_send < 0) return errno;
-
-                curr_packet_num += 1;
 
                 // reset timer
                 if (!timer_active) {

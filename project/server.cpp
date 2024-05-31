@@ -185,15 +185,15 @@ int main(int argc, char *argv[]) {
         }
 
         // listen to socket for incoming data from client
-        char client_buf[BUF_SIZE+12];
+        char client_buf[BUF_SIZE + 12];
         socklen_t clientsize = sizeof(clientaddr);
         int bytes_recvd = recvfrom(sockfd, client_buf, BUF_SIZE + 12, 0, (struct sockaddr*) &clientaddr, &clientsize);
         
         if (bytes_recvd > 0) {
             if (!client_send) {
-                client_send == true;
+                client_send = true;
             }
-            //fprintf(stderr, "incoming packet from client\n");
+            // fprintf(stderr, "incoming packet from client\n");
             Packet* received_packet = (Packet*)client_buf;
             uint32_t received_packet_number = ntohl(received_packet->packet_number);
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
@@ -232,7 +232,7 @@ int main(int argc, char *argv[]) {
 
                     // cancel timer if no unacked packets
                     if (input_left == curr_packet_num) {
-                        fprintf(stderr, "no unacked packets in window\n");
+                        // fprintf(stderr, "no unacked packets in window\n");
                         timer_active = false;
                     } 
                     // reset timer otherwise
@@ -241,11 +241,11 @@ int main(int argc, char *argv[]) {
                     }
                 }
             }
-            
+
             // receive data --> send an ack
             if (received_packet_number != 0) {
                 // Update window to reflect new packet
-                // //fprintf(stderr, "help%d\n", received_packet_number);
+                // fprintf(stderr, "help%d\n", received_packet_number);
                 server_window[received_packet_number] = (Packet*)malloc(sizeof(Packet) + received_payload_size);
                 if (server_window[received_packet_number] == NULL) {
                     perror("Memory allocation failed");
@@ -338,6 +338,7 @@ int main(int argc, char *argv[]) {
                             return 1;
                         }
                         memcpy(input_window[curr_packet_num], new_packet, sizeof(Packet) + ntohs(new_packet->payload_size));
+                        // fprintf(stderr, "meow: %d\n", ntohs(new_packet->payload_size));
                         curr_packet_num += 1;
 
                         // send the packet
@@ -357,16 +358,16 @@ int main(int argc, char *argv[]) {
                     //fprintf(stderr, "revd pack num%d\n",received_packet_number );
                     send_ACK(received_packet_number + 1, sockfd, clientaddr);
                 }
-            } 
+            }
         }
 
         // no bytes received, just send whatever is in standard input
-        if (!handshake && client_send) {
-            // //fprintf("HER\n");
+        if (!handshake && client_send == true) {
             Packet* new_packet = read_from_stdin(flag, encrypt_mac, input_window, curr_packet_num, input_left, input_right, timer_active, timer_start);
             
             // send the packet
             if (new_packet != NULL) {
+                // fprintf(stderr, "creating new packet\n");
                 // input_window[curr_packet_num] = new_packet;
                 input_window[curr_packet_num] = (Packet*)malloc(sizeof(Packet) + ntohs(new_packet->payload_size));
                 if (input_window[curr_packet_num] == NULL) {
@@ -376,12 +377,10 @@ int main(int argc, char *argv[]) {
                 }
                 memcpy(input_window[curr_packet_num], new_packet, sizeof(Packet) + ntohs(new_packet->payload_size));
                 curr_packet_num += 1;
-
+                // fprintf(stderr, "meow: %d\n", ntohs(new_packet->payload_size));
                 int did_send = sendto(sockfd, new_packet, sizeof(Packet) + ntohs(new_packet->payload_size), 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
                 if (did_send < 0) return errno;
                 
-                curr_packet_num += 1;
-
                 // reset timer
                 if (!timer_active) {
                     timer_active = true;
@@ -398,7 +397,7 @@ int main(int argc, char *argv[]) {
 Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int &curr_packet_num, int input_left, int input_right, bool &timer_active, struct timeval &timer_start) {
     char read_buf[BUF_SIZE];
     // memset(read_buf, 0, BUF_SIZE);
-    fprintf(stderr, "reading from stdin\n");
+    // fprintf(stderr, "reading from stdin\n");
     
    // check if we're within the send window
     int bytesRead = 0;
