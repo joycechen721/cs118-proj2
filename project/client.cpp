@@ -305,7 +305,7 @@ int main(int argc, char *argv[])
                         }
                         // not encrypted data
                         else {
-                            write(1, payload, received_payload_size);
+                            fprintf(stdout, "%.*s", received_payload_size, payload);
                         }
                         if (server_window[left_pointer] != NULL) {
                             free(server_window[left_pointer]);
@@ -371,6 +371,7 @@ int main(int argc, char *argv[])
             // send the packet
             if (new_packet != NULL) {
                 int did_send = sendto(sockfd, new_packet, sizeof(Packet) + new_packet->payload_size, 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
+                fprintf(stderr, "did_send size %d: \n", did_send);
                 if (did_send < 0) return errno;
 
                 curr_packet_num += 1;
@@ -413,6 +414,13 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
     if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
         fprintf(stderr, "bytes read from stdin %ld\n", bytesRead);
         fprintf(stderr, "current packet num %d\n", curr_packet_num);
+    
+        // Print the contents of read_buf
+        fprintf(stderr, "read_buf contents:\n");
+        for (ssize_t i = 0; i < bytesRead; ++i) {
+            fprintf(stderr, "%c", read_buf[i]);
+        }
+        fprintf(stderr, "\n");
 
         // create a new packet
         Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
