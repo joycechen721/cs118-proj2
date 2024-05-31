@@ -190,9 +190,9 @@ int main(int argc, char *argv[]) {
         if (bytes_recvd > 0) {
             fprintf(stderr, "incoming packet from client\n");
             Packet* received_packet = (Packet*)client_buf;
-            uint32_t received_packet_number = (received_packet->packet_number);
+            uint32_t received_packet_number = ntohl(received_packet->packet_number);
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
-            uint16_t received_payload_size = (received_packet->payload_size);
+            uint16_t received_payload_size = ntohs(received_packet->payload_size);
             
             fprintf(stderr, "received packet #: %d\n", received_packet_number);
             fprintf(stderr, "received payload size: %d\n", received_payload_size);
