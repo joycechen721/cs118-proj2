@@ -36,7 +36,9 @@ int main(int argc, char *argv[]) {
     int flags = fcntl(sockfd, F_GETFL);
     flags |= O_NONBLOCK;
     fcntl(sockfd, F_SETFL, flags);
-    fcntl(STDIN_FILENO, F_SETFL, flags);
+    int flags2 = fcntl(STDIN_FILENO, F_GETFL);
+    flags2 |= O_NONBLOCK;
+    fcntl(STDIN_FILENO, F_SETFL, flags2);
 
     /* 2. Construct & bind to our address */
     struct sockaddr_in servaddr;
@@ -188,6 +190,9 @@ int main(int argc, char *argv[]) {
         int bytes_recvd = recvfrom(sockfd, client_buf, BUF_SIZE + 12, 0, (struct sockaddr*) &clientaddr, &clientsize);
         
         if (bytes_recvd > 0) {
+            if (!client_send) {
+                client_send == true;
+            }
             //fprintf(stderr, "incoming packet from client\n");
             Packet* received_packet = (Packet*)client_buf;
             uint32_t received_packet_number = ntohl(received_packet->packet_number);
@@ -348,7 +353,7 @@ int main(int argc, char *argv[]) {
         }
 
         // no bytes received, just send whatever is in standard input
-        if (!handshake) {
+        if (!handshake && client_send) {
             // //fprintf("HER\n");
             Packet* new_packet = read_from_stdin(flag, encrypt_mac, input_window, curr_packet_num, input_left, input_right, timer_active, timer_start);
             

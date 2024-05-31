@@ -48,7 +48,9 @@ int main(int argc, char *argv[])
     int flags = fcntl(sockfd, F_GETFL);
     flags |= O_NONBLOCK;
     fcntl(sockfd, F_SETFL, flags);
-    fcntl(STDIN_FILENO, F_SETFL, flags);
+    int flags2 = fcntl(STDIN_FILENO, F_GETFL);
+    flags2 |= O_NONBLOCK;
+    fcntl(STDIN_FILENO, F_SETFL, flags2);
 
     // Construct server address
     struct sockaddr_in serveraddr;
