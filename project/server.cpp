@@ -223,9 +223,12 @@ int main(int argc, char *argv[]) {
                     // free packets from input_left to ack #
                     for (int i = input_left; i < received_ack_number; i++) {
                         if (input_window[i] != NULL) {
-                            free(input_window[i]);
+                            fprintf(stderr, "free input #: %d\n", i);
+                            // free(input_window[i]);
                             input_window[i] = NULL;
-                        }
+                        }else {
+                fprintf(stderr, "input_window[%d] is already NULL\n", i);
+            }
                     }
                     input_left = received_ack_number;
                     input_right = 20 + input_left;
@@ -369,6 +372,8 @@ int main(int argc, char *argv[]) {
             if (new_packet != NULL) {
                 // fprintf(stderr, "creating new packet\n");
                 input_window[curr_packet_num] = new_packet;
+                fprintf(stderr, "sent packet #: %d", curr_packet_num);
+
                 // input_window[curr_packet_num] = (Packet*)malloc(sizeof(Packet) + ntohs(new_packet->payload_size));
                 // if (input_window[curr_packet_num] == NULL) {
                 //     perror("Memory allocation failed");
@@ -419,8 +424,8 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
     if (bytesRead > 0) {
         // fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
         // fprintf(stderr, "current packet num %d\n", curr_packet_num);
-        // fprintf(stderr, "input left: %d\n", input_left);
-        // fprintf(stderr, "input right: %d\n", input_right);
+        fprintf(stderr, "input left: %d\n", input_left);
+        fprintf(stderr, "input right: %d\n", input_right);
 
         // create a new packet
         Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
@@ -461,8 +466,8 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
                 new_packet->payload_size = ntohs(sizeof(EncryptedData) + cipher_size);
                 memcpy(new_packet->data, encrypt_data, sizeof(EncryptedData) + cipher_size);
                 
-                free(cipher);
-                free(encrypt_data);
+                // free(cipher);
+                // free(encrypt_data);
             }
             // mac (so hungry i need a big mac rn)
             // this is causing me to lose braincells.
@@ -529,6 +534,7 @@ Packet *create_fin() {
 
     // Free the temporary Finished message memory
     free(server_fin);
+    server_fin = NULL;
     return packet;
 }
 
@@ -556,23 +562,8 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
     memcpy(server_hello->data, certificate, cert_size);
     server_hello->cert_size = cert_size;
 
-    FILE *file = fopen("public_key.txt", "w");
-
-
-    // Write the data into the file
-    for (size_t i = 0; i < 95; i++) {
-        //fprintf(file, "%02hhX ", (unsigned char)server_hello->data[i]);
-    }
-    fclose(file);
-
     char *server_nonce_sig = (char*)malloc(sig_size);
     sign((char*)client_nonce, 32, server_nonce_sig);
-    FILE *nonce = fopen("actual_signed_nonce.txt", "w");
-    // Write the server public key data into the file
-    for (size_t i = 0; i < sig_size; i++) {
-        //fprintf(nonce, "%02hhX ", (unsigned char)server_nonce_sig[i]);
-    }
-    fclose(nonce);
     memcpy(server_hello->data + cert_size, server_nonce_sig, sig_size);
     //fprintf(stderr, "sig size %ld\n", cert_size + sig_size);   
 
@@ -593,6 +584,7 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
     packet->payload_size = htons(server_hello_size);
     memcpy(packet->data, server_hello, server_hello_size);
     free(server_hello);
+    server_hello = NULL;
     return packet;
 }
 

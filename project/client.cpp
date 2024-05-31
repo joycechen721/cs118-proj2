@@ -226,7 +226,7 @@ int main(int argc, char *argv[])
                     for (int i = input_left; i < received_ack_number; i++) {
                         if (input_window[i] != NULL) {
                             //fprintf(stderr, "HAHAHA\n");
-                            free(input_window[i]);
+                            // free(input_window[i]);
                             
                             input_window[i] = NULL;
                         }
