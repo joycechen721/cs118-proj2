@@ -56,25 +56,6 @@ int main(int argc, char *argv[])
     serveraddr.sin_port = htons(port);
     socklen_t serversize = sizeof(serveraddr);
 
-    // while (handshake_left_ptr < 2)
-    // {
-        
-    //         else if(handshake_left_ptr ==1 && bytes_recvd == sizeof(SecurityHeader)){
-    //             // Print the contents of secret
-    //                 // if (secret != NULL) {
-    //                 //     fprintf(stderr, "secret:");
-    //                 //     for (size_t i = 0; i < sizeof(secret); ++i) {
-    //                 //         fprintf(stderr, "%02x ", (unsigned char)secret[i]);
-    //                 //     }
-    //                 //     fprintf(stderr, "\n");
-    //                 // } else {
-    //                 //     fprintf(stderr, "secret is NULL\n");
-    //                 // }
-    //             handshake_left_ptr +=1; 
-    //         }
-    //     }
-    // }
-
     // buffer for packets received from client
     Packet *server_window[MAX_PACKET_SEND_SIZE] = {nullptr};
     int curr_packet_num = 1;
@@ -102,7 +83,7 @@ int main(int argc, char *argv[])
         // Load CA public key
         load_ca_public_key(ca_public_key_file);
     }
-
+    bool need_to_send_stdin_data = false;
     while(true){
         // retransmission from rto
         if (timer_active) {
@@ -113,9 +94,10 @@ int main(int argc, char *argv[])
             if (elapsed_time >= RTO) {
                 // retransmit leftmost unacked packet if not NULL
                 Packet* retransmit = input_window[input_left];
+                retransmit-> acknowledgment_number = left_pointer; 
                 if (retransmit) {
                     fprintf(stderr, "Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
-                    int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&serveraddr, serversize);
+                    int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&serveraddr, serversize); //check this
                     if (did_send < 0) {
                         perror("Retransmit failed");
                     }
@@ -304,14 +286,18 @@ int main(int argc, char *argv[])
                 curr_packet_num += 1;
 
                 // send the packet
-                int did_send = sendto(sockfd, new_packet, sizeof(Packet) + new_packet->payload_size, 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
-                if (did_send < 0) return errno;
+                //if need to ack smth function here then change the ack number, how to determine if we ack
+                //we need to ack if we have stuff in the server window
+                //need to have a function
+                // int did_send = sendto(sockfd, new_packet, sizeof(Packet) + newpacket->payload_size, 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
+                // if (did_send < 0) return errno;
+                need_to_send_stdin_data  = true;
 
-                // reset timer
-                if (!timer_active) {
-                    timer_active = true;
-                    gettimeofday(&timer_start, NULL);
-                }
+                // reset timer this might be wrong, don't reset if you send, only reset when you recieve acks
+                // if (!timer_active) {
+                //     timer_active = true;
+                //     gettimeofday(&timer_start, NULL);
+                // }
             } 
         }
 
@@ -347,17 +333,36 @@ int main(int argc, char *argv[])
                         uint8_t *payload = received_packet->data;
                         // decrypt data
                         if (flag == 1) {
-                            fprintf(stderr, "receive encrypted data\n");
                             EncryptedData* encrypted = (EncryptedData*) payload;
                             uint16_t encrypted_data_size = encrypted->payload_size;
                             // data will be payload - mac size if no encrypt mac
                             if (encrypt_mac) {
-                                encrypted_data_size = encrypted->payload_size - MAC_SIZE;
+                                encrypted_data_size = encrypted->payload_size - MAC_SIZE + IV_SIZE;
                             }
+                            fprintf(stderr, "receive encrypted data size%d\n", encrypted_data_size);
                             char* encrypted_data = (char*) malloc (encrypted_data_size);
-                            memcpy(encrypted_data, encrypted->data, encrypted_data_size);
+                            memcpy(encrypted_data, encrypted->data - IV_SIZE, encrypted_data_size);
                             // fprintf(stderr, "encrypted size %d: \n", encrypted_data_size);
-                            
+                
+                            if (encrypt_mac) {
+                                char* mac_code = (char*) malloc (MAC_SIZE);
+                                memcpy(mac_code, encrypted->data + encrypted_data_size - IV_SIZE, MAC_SIZE);
+                                
+                                char* computed_mac_code = (char*) malloc (MAC_SIZE);
+                                hmac(encrypted_data, encrypted_data_size, computed_mac_code);
+
+                                if (memcmp(mac_code, computed_mac_code, MAC_SIZE) != 0) {
+                                    fprintf(stderr, "MAC code verification failed\n");
+                                    free(mac_code);
+                                    free(computed_mac_code);
+                                    close(sockfd);
+                                    exit(EXIT_FAILURE);
+                                }
+                                fprintf(stderr, "Verification of packet mac code succeeded.\n");
+                                free(mac_code);
+                                free(computed_mac_code);
+                            }
+
                             char iv[IV_SIZE];
                             memcpy(iv, (char*) encrypted->init_vector, IV_SIZE);
                             
@@ -368,20 +373,7 @@ int main(int argc, char *argv[])
                             unsigned char padding_size = decrypted_data[encrypted_data_size - 1];
 
                             // verify the packet MAC
-                            if (encrypt_mac) {
-                                char* mac_code = (char*) malloc (MAC_SIZE);
-                                memcpy(mac_code, encrypted->data + encrypted_data_size, MAC_SIZE);
-
-                                if (!verify((char *) decrypted_data, size - padding_size, (char*) mac_code, MAC_SIZE, ec_peer_public_key)) {
-                                    fprintf(stderr, "Verification of packet mac code failed.\n");
-                                    free(mac_code);
-                                    close(sockfd);
-                                    exit(EXIT_FAILURE);
-                                }
-                                fprintf(stderr, "Verification of packet mac code succeeded.\n");
-                                free(mac_code);
-                            }
-
+                           
                             write(1, decrypted_data, size - padding_size);
 
                             free(encrypted_data);
@@ -400,7 +392,17 @@ int main(int argc, char *argv[])
                         }
                     }
                     // Now we can send the cumulative ack
-                    send_ACK(left_pointer, sockfd, serveraddr);
+                    if(need_to_send_stdin_data){
+                        fprintf(stderr, "ENTERS\n");
+                        input_window[curr_packet_num] -> acknowledgment_number = left_pointer;
+                        int did_send = sendto(sockfd, input_window[curr_packet_num-1], sizeof(Packet) + input_window[curr_packet_num-1]->payload_size, 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
+                        if (did_send < 0) return errno;
+                        need_to_send_stdin_data  = false;
+                    }
+                    else{
+                        send_ACK(left_pointer, sockfd, serveraddr);
+                    }
+
                 }
                 // receive fin 
                 else {
@@ -421,7 +423,7 @@ int main(int argc, char *argv[])
                 }
             } 
             // receive an ack --> update input window
-            else {
+            if(received_ack_number != 0)  {
                 fprintf(stderr, "received ack: %d\n", received_ack_number);
                 // if(received_ack_number == 3 && handshake){
                 //     handshake = false;
@@ -450,6 +452,14 @@ int main(int argc, char *argv[])
                 }
             }
         }
+        else if(need_to_send_stdin_data){
+            fprintf(stderr, "pack num%d\n", curr_packet_num);
+            int did_send = sendto(sockfd, input_window[curr_packet_num-1], sizeof(Packet) + input_window[curr_packet_num-1]->payload_size, 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
+            fprintf(stderr, "H\n");
+            if (did_send < 0) return errno;
+            need_to_send_stdin_data = false;
+        }
+
         // TEST CODE for SEND:
         // // char received_buf[] = "Hello earth!";
         // int did_send = sendto(sockfd, received_buf, strlen(received_buf), 0, (struct sockaddr*) &serveraddr, sizeof(serveraddr));
