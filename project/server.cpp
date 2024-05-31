@@ -196,7 +196,7 @@ int main(int argc, char *argv[]) {
             
             //fprintf(stderr, "received ack #: %d\n", received_ack_number);
             //fprintf(stderr, "received packet #: %d\n", received_packet_number);
-            fprintf(stderr, "received payload size: %d\n", received_payload_size);
+            //fprintf(stderr, "received payload size: %d\n", received_payload_size);
 
             // receive an ack --> update input window
             if (received_ack_number != 0) {
