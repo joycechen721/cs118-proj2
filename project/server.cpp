@@ -300,6 +300,7 @@ int main(int argc, char *argv[]) {
                         // not encrypted data
                         else {
                             fprintf(stdout, "%.*s", received_payload_size, payload);
+                            fflush(stdout);
                         }
                         if (server_window[left_pointer] != NULL) {
                             free(server_window[left_pointer]);
@@ -347,7 +348,7 @@ int main(int argc, char *argv[]) {
 
         // no bytes received, just send whatever is in standard input
         if (!handshake) {
-            // printf("HER\n");
+            // fprintf("HER\n");
             Packet* new_packet = read_from_stdin(flag, encrypt_mac, input_window, curr_packet_num, input_left, input_right, timer_active, timer_start);
             
             // send the packet

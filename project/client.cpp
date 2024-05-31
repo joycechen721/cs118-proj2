@@ -306,6 +306,7 @@ int main(int argc, char *argv[])
                         // not encrypted data
                         else {
                             fprintf(stdout, "%.*s", received_payload_size, payload);
+                            fflush(stdout);
                         }
                         if (server_window[left_pointer] != NULL) {
                             free(server_window[left_pointer]);
