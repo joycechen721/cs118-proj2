@@ -270,10 +270,10 @@ int main(int argc, char *argv[])
                         if (flag == 1) {
                             //fprintf(stderr, "receive encrypted data\n");
                             EncryptedData* encrypted = (EncryptedData*) payload;
-                            uint16_t encrypted_data_size = encrypted->payload_size;
+                            uint16_t encrypted_data_size = ntohs(encrypted->payload_size);
                             // data will be payload - mac size if no encrypt mac
                             if (encrypt_mac) {
-                                encrypted_data_size = encrypted->payload_size - MAC_SIZE;
+                                encrypted_data_size -= MAC_SIZE;
                             }
                             char* encrypted_data = (char*) malloc (encrypted_data_size);
                             memcpy(encrypted_data, encrypted->data, encrypted_data_size);
@@ -461,7 +461,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
             if (!encrypt_mac) {
                 // fprintf(stderr, "ECYPRT MAC MODE\n");
                 EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size);
-                encrypt_data->payload_size = cipher_size;
+                encrypt_data->payload_size = htons(cipher_size);
                 encrypt_data->padding = 0;
                 memcpy(encrypt_data->init_vector, iv, IV_SIZE);
                 memcpy(encrypt_data->data, cipher, cipher_size);
@@ -471,7 +471,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
                 encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader);
 
                 // populate udp packet
-                new_packet->payload_size = ntohs(sizeof(EncryptedData) + cipher_size);
+                new_packet->payload_size = htons(sizeof(EncryptedData) + cipher_size);
                 memcpy(new_packet->data, encrypt_data, sizeof(EncryptedData) + cipher_size);
                 
                 // free(cipher);
@@ -482,7 +482,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
             else {
                 fprintf(stderr, "NOT ECYPRT MAC MODE\n");
                 EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
-                encrypt_data->payload_size = cipher_size + MAC_SIZE;
+                encrypt_data->payload_size = htons(cipher_size + MAC_SIZE);
                 encrypt_data->padding = 0;
                 memcpy(encrypt_data->init_vector, iv, IV_SIZE);
                 memcpy(encrypt_data->data, cipher, cipher_size);
@@ -501,7 +501,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
                 encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader); 
 
                 // populate udp packet
-                new_packet->payload_size = ntohs(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
+                new_packet->payload_size = htons(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
                 memcpy(new_packet->data, encrypt_data, sizeof(EncryptedData) + cipher_size + MAC_SIZE);
                 
                 // free(cipher);
@@ -606,7 +606,7 @@ Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed
         exit(EXIT_FAILURE);
     }
     // Initialize client_cert
-    client_cert -> key_len = pub_key_size; 
+    client_cert -> key_len = htons(pub_key_size); 
     client_cert -> padding = 0;
     memcpy(client_cert->data, public_key, pub_key_size); 
 
