@@ -392,8 +392,8 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
 
         // create a new packet
         Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
-        new_packet->packet_number = curr_packet_num;
-        new_packet->acknowledgment_number = 0;
+        new_packet->packet_number = htonl((uint32_t) curr_packet_num);
+        new_packet->acknowledgment_number = htonl((uint32_t)0);
 
         // encrypt data 
         if (flag == 1) {
@@ -464,7 +464,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
         }
         // non-encrypted data
         else {
-            new_packet->payload_size = bytesRead;
+            new_packet->payload_size = htons((uint16_t)bytesRead);
             memcpy(new_packet->data, read_buf, bytesRead);
         }
 

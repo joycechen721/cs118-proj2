@@ -204,10 +204,11 @@ int main(int argc, char *argv[])
         if (bytes_recvd > 0) {
             printf("incoming packet from server\n");
             Packet* received_packet = (Packet*)server_buf;
-            uint32_t received_packet_number = received_packet->packet_number;
+            uint32_t received_packet_number = ntohl(received_packet->packet_number);
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
-            uint16_t received_payload_size = (received_packet->payload_size);
+            uint16_t received_payload_size = ntohs(received_packet->payload_size);
             
+            fprintf(stderr, "received ack #: %d\n", received_ack_number);
             fprintf(stderr, "received packet #: %d\n", received_packet_number);
             fprintf(stderr, "received payload size: %d\n", received_payload_size);
 
@@ -247,7 +248,7 @@ int main(int argc, char *argv[])
             // also receive data --> send an ack
             if (received_packet_number != 0) {
                 // Update window to reflect new packet
-                fprintf(stderr, "RECEIVE DATA (NON ACK) %d\n", received_packet_number);
+                // fprintf(stderr, "RECEIVE DATA (NON ACK) %d\n", received_packet_number);
                 server_window[received_packet_number] = (Packet*)malloc(sizeof(Packet) + received_payload_size);
                 if (server_window[received_packet_number] == NULL) {
                     perror("Memory allocation failed");
@@ -401,7 +402,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
     char read_buf[BUF_SIZE];
     memset(read_buf, 0, BUF_SIZE);
     // read MAX_SEG_SIZE from stdin at a time
-    ssize_t bytesRead = 0;
+    int bytesRead = 0;
     if (flag == 1 && encrypt_mac) {
         bytesRead = read(STDIN_FILENO, read_buf, 959);
     } 
@@ -413,15 +414,15 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
     }
     // check if we're within the send window
     if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
-        fprintf(stderr, "bytes read from stdin %ld\n", bytesRead);
+        fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
         fprintf(stderr, "current packet num %d\n", curr_packet_num);
     
         // Print the contents of read_buf
-        fprintf(stderr, "read_buf contents:\n");
-        for (ssize_t i = 0; i < bytesRead; ++i) {
-            fprintf(stderr, "%c", read_buf[i]);
-        }
-        fprintf(stderr, "\n");
+        // fprintf(stderr, "read_buf contents:\n");
+        // for (ssize_t i = 0; i < bytesRead; ++i) {
+        //     fprintf(stderr, "%c", read_buf[i]);
+        // }
+        // fprintf(stderr, "\n");
 
         // create a new packet
         Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
