@@ -8,3 +8,5 @@
 .txt
 
 /autograder
+/project/*.txt
+/project/*.bin

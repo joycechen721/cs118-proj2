@@ -214,7 +214,7 @@ int main(int argc, char *argv[])
 
             // receive an ack --> update input window
             if (received_ack_number != 0) {
-                //fprintf(stderr, "received ack: %d\n", received_ack_number);
+                fprintf(stderr, "received ack: %d\n", received_ack_number);
                 // if(received_ack_number == 3 && handshake){
                 //     handshake = false;
                 // }
@@ -306,8 +306,9 @@ int main(int argc, char *argv[])
                         }
                         // not encrypted data
                         else {
-                            fprintf(stdout, "%.*s", received_payload_size, payload);
-                            fflush(stdout);
+                            write(STDOUT_FILENO, payload, received_payload_size);
+                            // fprintf(stdout, "%.*s", received_payload_size, payload);
+                            // fflush(stdout);
                         }
                         if (server_window[left_pointer] != NULL) {
                             free(server_window[left_pointer]);
@@ -399,30 +400,28 @@ int main(int argc, char *argv[])
 }
 
 Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int &curr_packet_num, int input_left, int input_right, bool &timer_active, struct timeval &timer_start) {
-    char* read_buf = (char*) malloc (BUF_SIZE);
-    memset(read_buf, 0, BUF_SIZE);
-    // read MAX_SEG_SIZE from stdin at a time
-    int bytesRead = 0;
-    if (flag == 1 && encrypt_mac) {
-        bytesRead = read(STDIN_FILENO, read_buf, 959);
-    } 
-    else if (flag == 1 && !encrypt_mac) {
-        bytesRead = read(STDIN_FILENO, read_buf, 991);
-    } 
-    else {
-        bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
-    }
+    char read_buf[BUF_SIZE];
+
     // check if we're within the send window
-    if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
+    int bytesRead = 0;
+    if (curr_packet_num >= input_left && curr_packet_num <= input_right){
+        if (flag == 1 && encrypt_mac) {
+            bytesRead = read(STDIN_FILENO, read_buf, 959);
+        } 
+        else if (flag == 1 && !encrypt_mac) {
+            bytesRead = read(STDIN_FILENO, read_buf, 991);
+        } 
+        else {
+            bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
+        }
+    }
+    else {
+        return NULL;
+    }
+    
+    if (bytesRead > 0) {
         fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
         fprintf(stderr, "current packet num %d\n", curr_packet_num);
-    
-        // Print the contents of read_buf
-        // //fprintf(stderr, "read_buf contents:\n");
-        // for (ssize_t i = 0; i < bytesRead; ++i) {
-        //     //fprintf(stderr, "%c", read_buf[i]);
-        // }
-        // //fprintf(stderr, "\n");
 
         // create a new packet
         Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
@@ -503,11 +502,11 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
             memcpy(new_packet->data, read_buf, bytesRead);
         }
 
-        free(read_buf);
+        // free(read_buf);
 
         return new_packet;
     }
-    free(read_buf);
+    // free(read_buf);
     return NULL;
 }
 

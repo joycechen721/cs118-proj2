@@ -298,8 +298,8 @@ int main(int argc, char *argv[]) {
                         }
                         // not encrypted data
                         else {
-                            fprintf(stderr, "sdfadfd %d", received_payload_size);
-                            write(1, payload, received_payload_size);
+                            // fprintf(stderr, "sdfadfd %d", received_payload_size);
+                            write(STDOUT_FILENO, payload, received_payload_size);
                             // fprintf(stdout, "%.*s", received_payload_size, payload);
                             // fflush(stdout);
                         }
@@ -375,21 +375,27 @@ int main(int argc, char *argv[]) {
 Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int &curr_packet_num, int input_left, int input_right, bool &timer_active, struct timeval &timer_start) {
     char read_buf[BUF_SIZE];
     memset(read_buf, 0, BUF_SIZE);
-    // read MAX_SEG_SIZE from stdin at a time
-    ssize_t bytesRead = 0;
-    if (flag == 1 && encrypt_mac) {
-        bytesRead = read(STDIN_FILENO, read_buf, 959);
-    } 
-    else if (flag == 1 && !encrypt_mac) {
-        bytesRead = read(STDIN_FILENO, read_buf, 991);
-    } 
-    else {
-        bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
+    
+   // check if we're within the send window
+    int bytesRead = 0;
+    if (curr_packet_num >= input_left && curr_packet_num <= input_right){
+        if (flag == 1 && encrypt_mac) {
+            bytesRead = read(STDIN_FILENO, read_buf, 959);
+        } 
+        else if (flag == 1 && !encrypt_mac) {
+            bytesRead = read(STDIN_FILENO, read_buf, 991);
+        } 
+        else {
+            bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
+        }
     }
-    // check if we're within the send window
-    if (bytesRead > 0 && curr_packet_num >= input_left && curr_packet_num <= input_right) {
-        //fprintf(stderr, "bytes read from stdin %ld\n", bytesRead);
-        //fprintf(stderr, "current packet num %d\n", curr_packet_num);
+    else {
+        return NULL;
+    }
+
+    if (bytesRead > 0) {
+        fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
+        fprintf(stderr, "current packet num %d\n", curr_packet_num);
 
         // create a new packet
         Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
