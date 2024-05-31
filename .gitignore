@@ -10,3 +10,4 @@
 /autograder
 /project/*.txt
 /project/*.bin
+Makefile

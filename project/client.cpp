@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
     // buffer for packets to send out
     Packet *input_window[MAX_PACKET_SEND_SIZE] = {nullptr};
     int input_left = 1; // oldest unacked packet (leftmost)
-    int input_right = 19;
+    int input_right = 20;
     // initialize timer
     bool timer_active = false;
    
@@ -331,13 +331,12 @@ int main(int argc, char *argv[])
                     }
                     // send data + ack
                     else {
+                        new_packet->acknowledgment_number = htonl(left_pointer);
                         input_window[curr_packet_num] = new_packet;
                         curr_packet_num += 1;
-
-                        new_packet->acknowledgment_number = htonl(left_pointer);
-
+                        
                         // send the packet
-                        int did_send = sendto(sockfd, new_packet, sizeof(Packet) + new_packet->payload_size, 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
+                        int did_send = sendto(sockfd, new_packet, sizeof(Packet) + ntohs(new_packet->payload_size), 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
                         if (did_send < 0) return errno;
 
                         // reset timer
@@ -514,9 +513,10 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
 
 // Sends cumulative ACK depending on the packet number received
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in serveraddr) {
+    fprintf(stderr, "sending ack %d\n", left_window_index);
     Packet ack_packet = {0};
     ack_packet.acknowledgment_number = htonl(left_window_index);
-    sendto(sockfd, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
+    sendto(sockfd, &ack_packet, sizeof(Packet), 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
 }
 
 Packet *create_client_hello(char* client_nonce_buf){
