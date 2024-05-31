@@ -252,7 +252,44 @@ int main(int argc, char *argv[])
 
             // also receive data --> send an ack
             if (received_packet_number != 0) {
-                // Update window to reflect new packet
+
+                if (!handshake && flag == 1) {
+                    uint8_t *payload = received_packet->data;  
+                    //fprintf(stderr, "receive encrypted data\n");
+                    EncryptedData* encrypted = (EncryptedData*) payload;
+                    uint16_t encrypted_data_size = encrypted->payload_size;
+                    // data will be payload - mac size if no encrypt mac
+                    if (encrypt_mac) {
+                        encrypted_data_size = encrypted->payload_size - MAC_SIZE + IV_SIZE;
+                    }
+                    char* encrypted_data = (char*) malloc (encrypted_data_size);
+                    memcpy(encrypted_data, encrypted->data - IV_SIZE, encrypted_data_size);
+                    
+                    // char decrypted_data[encrypted_data_size];
+                    // size_t size = decrypt_cipher(encrypted_data, encrypted_data_size, iv, decrypted_data, 0);
+                    // //fprintf(stderr, "Decrypted plaintext: %.*s\n", (int) size, decrypted_data);
+
+                    // verify the packet MAC
+                    if (encrypt_mac) {
+                        char* mac_code = (char*) malloc (MAC_SIZE);
+                        memcpy(mac_code, encrypted->data + encrypted_data_size - IV_SIZE, MAC_SIZE);
+                        
+                        char* computed_mac_code = (char*) malloc (MAC_SIZE);
+                        hmac(encrypted_data, encrypted_data_size, computed_mac_code);
+
+                        if (memcmp(mac_code, computed_mac_code, MAC_SIZE) != 0) {
+                            fprintf(stderr, "MAC code verification failed\n");
+                            free(mac_code);
+                            free(computed_mac_code);
+                            close(sockfd);
+                            exit(EXIT_FAILURE);
+                        }
+                        fprintf(stderr, "Verification of packet mac code succeeded.\n");
+                        free(mac_code);
+                        free(computed_mac_code);
+                    }
+                    // free(encrypted_data);
+                }
                 // //fprintf(stderr, "RECEIVE DATA (NON ACK) %d\n", received_packet_number);
                 server_window[received_packet_number] = (Packet*)malloc(sizeof(Packet) + received_payload_size);
                 if (server_window[received_packet_number] == NULL) {
@@ -266,60 +303,29 @@ int main(int argc, char *argv[])
 
                 // Update left pointer until it points to nothing, adjust right pointer too
                 if(!handshake){
-                    while (server_window[left_pointer] != NULL) {
-                        uint8_t *payload = received_packet->data;
-                        // decrypt data
-                        if (flag == 1) {
-                            //fprintf(stderr, "receive encrypted data\n");
-                            EncryptedData* encrypted = (EncryptedData*) payload;
+                    while (server_window[left_pointer] != NULL) {              
+                        // write all data in buffer since it is already unecrypted
+                        // left pointer in buffer is the start of the print
+                        Packet *current_write_packet = (Packet*) server_window[left_pointer];
+                        uint8_t* current_write_packet_data = current_write_packet -> data; 
+
+                        if(flag == 0){
+                            write(STDOUT_FILENO, current_write_packet_data, ntohs(current_write_packet-> payload_size));
+                        }
+                        else{
+                            EncryptedData* encrypted = (EncryptedData*) current_write_packet_data;
                             uint16_t encrypted_data_size = encrypted->payload_size;
-                            // data will be payload - mac size if no encrypt mac
-                            if (encrypt_mac) {
-                                encrypted_data_size = encrypted->payload_size - MAC_SIZE;
-                            }
-                            char* encrypted_data = (char*) malloc (encrypted_data_size);
-                            memcpy(encrypted_data, encrypted->data, encrypted_data_size);
-                            // //fprintf(stderr, "encrypted size %d: \n", encrypted_data_size);
-                            
                             char iv[IV_SIZE];
                             memcpy(iv, (char*) encrypted->init_vector, IV_SIZE);
-                            
                             char decrypted_data[encrypted_data_size];
-                            size_t size = decrypt_cipher(encrypted_data, encrypted_data_size, iv, decrypted_data, 0);
-                            // //fprintf(stderr, "Decrypted plaintext: %.*s\n", (int) size, decrypted_data);
-
-                            unsigned char padding_size = decrypted_data[encrypted_data_size - 1];
-
-                            // verify the packet MAC
-                            if (encrypt_mac) {
-                                char* mac_code = (char*) malloc (MAC_SIZE);
-                                memcpy(mac_code, encrypted->data + encrypted_data_size, MAC_SIZE);
-
-                                if (!verify((char *) decrypted_data, size - padding_size, (char*) mac_code, MAC_SIZE, ec_peer_public_key)) {
-                                    //fprintf(stderr, "Verification of packet mac code failed.\n");
-                                    free(mac_code);
-                                    close(sockfd);
-                                    exit(EXIT_FAILURE);
-                                }
-                                //fprintf(stderr, "Verification of packet mac code succeeded.\n");
-                                free(mac_code);
-                            }
-
-                            write(1, decrypted_data, size - padding_size);
-
-                            // free(encrypted_data);
+                            size_t size = decrypt_cipher((char*) encrypted -> data, encrypted_data_size, iv, decrypted_data, 0);
+                            write(1, decrypted_data, size); //check later
                         }
-                        // not encrypted data
-                        else {
-                            write(STDOUT_FILENO, payload, received_payload_size);
-                            // fprintf(stdout, "%.*s", received_payload_size, payload);
-                            // fflush(stdout);
-                        }
-                        if (server_window[left_pointer] != NULL) {
-                            // printf("here: %d\n", left_pointer);
-                            free(server_window[left_pointer]);
-                            server_window[left_pointer] = NULL;
-                        }
+                        // fprintf(stdout, "%.*s", received_payload_size, payload);
+                        // fflush(stdout);
+                        
+                        free(server_window[left_pointer]);
+                        server_window[left_pointer] = NULL;
                         left_pointer += 1;
                         if (left_pointer < MAX_PACKET_SEND_SIZE - 20) {
                             right_pointer += 1;
@@ -331,7 +337,7 @@ int main(int argc, char *argv[])
 
                     // if not, send pure ack packet
                     if (new_packet == NULL) {
-                        send_ACK(received_packet_number + 1, sockfd, serveraddr);
+                        send_ACK(left_pointer, sockfd, serveraddr);
                     }
                     // send data + ack
                     else {
