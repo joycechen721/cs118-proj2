@@ -84,25 +84,25 @@ int main(int argc, char *argv[]) {
     while (true) {
         
         // retransmission from rto
-        // if (timer_active) {
-        //     struct timeval now;
-        //     gettimeofday(&now, NULL);
-        //     double elapsed_time = (now.tv_sec - timer_start.tv_sec) + (now.tv_usec - timer_start.tv_usec) / 1e6;
-        //     // timer expired
-        //     if (elapsed_time >= RTO) {
-        //         // retransmit leftmost unacked packet if not NULL
-        //         Packet* retransmit = input_window[input_left];
-        //         if (retransmit) {
-        //             //fprintf(stderr, "Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
-        //             int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&clientaddr, clientsize);
-        //             if (did_send < 0) {
-        //                 perror("Retransmit failed");
-        //             }
-        //         }
-        //         // reset timer
-        //         gettimeofday(&timer_start, NULL);
-        //     }
-        // }
+        if (timer_active) {
+            struct timeval now;
+            gettimeofday(&now, NULL);
+            double elapsed_time = (now.tv_sec - timer_start.tv_sec) + (now.tv_usec - timer_start.tv_usec) / 1e6;
+            // timer expired
+            if (elapsed_time >= RTO) {
+                // retransmit leftmost unacked packet if not NULL
+                Packet* retransmit = input_window[input_left];
+                if (retransmit) {
+                    //fprintf(stderr, "Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
+                    int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&clientaddr, clientsize);
+                    if (did_send < 0) {
+                        perror("Retransmit failed");
+                    }
+                }
+                // reset timer
+                gettimeofday(&timer_start, NULL);
+            }
+        }
 
         //security handshake
         if(handshake) { //if handshake still ongoing
@@ -220,6 +220,8 @@ int main(int argc, char *argv[]) {
                 }
 
                 if (received_ack_number > input_left) {
+                    fprintf(stderr, "RECEIVED ACK%d\n", received_ack_number);
+                    fprintf(stderr, "input left is %d\n", input_left);
                     // free packets from input_left to ack #
                     for (int i = input_left; i < received_ack_number; i++) {
                         if (input_window[i] != NULL) {
@@ -303,15 +305,15 @@ int main(int argc, char *argv[]) {
                         }
                         // not encrypted data
                         else {
-                            // fprintf(stderr, "sdfadfd %d", received_payload_size);
-                            write(STDOUT_FILENO, payload, received_payload_size);
+                            // write packet is leftmost packet in buffer
+                            Packet *current_write_packet = (Packet*) server_window[left_pointer];
+                            uint8_t* current_write_packet_data = current_write_packet -> data; 
+                            write(STDOUT_FILENO, current_write_packet_data, ntohs(current_write_packet-> payload_size));
                             // fprintf(stdout, "%.*s", received_payload_size, payload);
                             // fflush(stdout);
                         }
-                        if (server_window[left_pointer] != NULL) {
-                            free(server_window[left_pointer]);
-                            server_window[left_pointer] = NULL;
-                        }
+                        free(server_window[left_pointer]);
+                        server_window[left_pointer] = NULL;
                         left_pointer += 1;
                         if (left_pointer < MAX_PACKET_SEND_SIZE - 20) {
                             right_pointer += 1;
@@ -323,11 +325,11 @@ int main(int argc, char *argv[]) {
 
                      // if not, send pure ack packet
                     if (new_packet == NULL) {
-                        send_ACK(received_packet_number + 1, sockfd, clientaddr);
+                        send_ACK(left_pointer, sockfd, clientaddr);
+                        fprintf(stderr, "we are here.%d\n", left_pointer);
                     }
                     // send data + ack
                     else {
-                        fprintf(stderr, "we are here.\n");
                         new_packet->acknowledgment_number = htonl(left_pointer);
                         // input_window[curr_packet_num] = new_packet;
 
