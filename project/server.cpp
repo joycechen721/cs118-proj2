@@ -132,7 +132,14 @@ int main(int argc, char *argv[]) {
             else if(input_left == 2 && server_window[2] != NULL && input_window[2] == NULL){ //this means we have recieved 2nd ack + key exchange, need to parse it
                 fprintf(stderr, "RECEIVED KEY EXCHANGE\n");
                 Packet* key_exchange_packet = server_window[2];
-                KeyExchangeRequest* key_exchange = (KeyExchangeRequest*) key_exchange_packet -> data; 
+                KeyExchangeRequest* key_exchange = (KeyExchangeRequest*) key_exchange_packet -> data;
+
+                SecurityHeader* header = &key_exchange -> header;
+                if (header->msg_type != KEY_EXCHANGE_REQUEST) {
+                    close(sockfd);
+                    return 1;
+                }
+
                 uint16_t client_cert_size = ntohs(key_exchange->cert_size);
                 // Extract certificate from key_exchange-> data
                 uint8_t raw_cert_buf[client_cert_size];

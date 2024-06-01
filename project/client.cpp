@@ -121,12 +121,13 @@ int main(int argc, char *argv[])
                 fprintf(stderr, "RECEIVED SERVER HELLO\n");
                 Packet* server_hello_packet = server_window[1];
                 ServerHello *server_hello = (ServerHello *) server_hello_packet -> data;
+
                 SecurityHeader* header = &server_hello -> header;
                 if (header->msg_type != SERVER_HELLO) {
-                    //fprintf(stderr, "Expected SERVER_HELLO, but got message type: %u\n", header->msg_type);
                     close(sockfd);
                     return 1;
                 }
+
                 uint8_t server_comm_type = server_hello->comm_type;
                 uint8_t server_sig_size = (server_hello->sig_size);
                 
@@ -353,6 +354,15 @@ int main(int argc, char *argv[])
                 // receive fin 
                 else {
                     if (curr_packet_num == 3) {
+                        Packet* finished_packet = server_window[2];
+                        Finished* finished = (Finished*) finished_packet -> data;
+
+                        SecurityHeader* header = &finished -> header;
+                        if (header->msg_type != FINISHED) {
+                            close(sockfd);
+                            return 1;
+                        }
+
                         fprintf(stderr, "RECEIVED FIN \n");
                         handshake = false;
                         if (encrypt_mac) {
