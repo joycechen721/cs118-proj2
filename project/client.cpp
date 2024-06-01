@@ -143,7 +143,7 @@ int main(int argc, char *argv[])
                 memcpy(raw_cert_buf, server_hello->data, server_cert_size);
                 
                 Certificate* server_cert = (Certificate*) raw_cert_buf;
-                int key_len = ntohs(server_cert->key_len);
+                uint16_t key_len = ntohs(server_cert->key_len);
                 //fprintf(stderr, "certificate key length HERE%d\n", key_len);
                 //fprintf(stderr, "certificate length %u\n", server_cert_size);
                 //fprintf(stderr, "signature length %d\n", server_sig_size);
