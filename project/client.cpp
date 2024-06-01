@@ -583,8 +583,8 @@ Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed
 
     uint16_t key_len = ntohs(server_cert -> key_len);
     uint8_t *server_public_key = server_cert -> data;
-    size_t signature_len = cert_size - (2 * sizeof(uint16_t) + key_len);
-    uint8_t *signature = server_public_key + key_len;
+    uint8_t *signature = server_cert -> data + key_len;
+    size_t signature_len = cert_size - sizeof(Certificate) - key_len;
     //fprintf(stderr, "server cert key len %d\n", key_len);
     // Verify server signature inside of the certificate
     if (!verify((char *) server_public_key, key_len, (char*) signature, signature_len, ec_ca_public_key)) {

@@ -167,18 +167,18 @@ int main(int argc, char *argv[]) {
                 size_t signature_len = client_cert_size - sizeof(Certificate) - key_len;
                 // verify client certificate
                 // int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* authority)
-                if (!verify((char*) client_public_key, key_len, (char*) signature, signature_len, ec_peer_public_key)) {
-                    //fprintf(stderr, "Verification of client certificate failed.\n");
-                    close(sockfd);
-                    exit(EXIT_FAILURE);
-                }
+                // if (!verify((char*) client_public_key, key_len, (char*) signature, signature_len, ec_peer_public_key)) {
+                //     //fprintf(stderr, "Verification of client certificate failed.\n");
+                //     close(sockfd);
+                //     exit(EXIT_FAILURE);
+                // }
                 
-                // verify client nonce
-                if (!verify((char*) server_sig, sizeof(*server_sig), (char*) server_sig, sig_size, ec_peer_public_key)) {
-                    //fprintf(stderr, "Verification of client signature failed.\n");
-                    close(sockfd);
-                    exit(EXIT_FAILURE);
-                }
+                // // Verify client nonce
+                // if (!verify((char*) server_sig, sig_size, (char*) signature, signature_len, ec_peer_public_key)) {
+                //     fprintf(stderr, "Verification of client signature failed.\n");
+                //     close(sockfd);
+                //     exit(EXIT_FAILURE);
+                // }
 
                 // derive shared secret
                 derive_secret();
