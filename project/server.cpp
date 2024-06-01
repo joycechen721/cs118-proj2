@@ -460,7 +460,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
 
                 encrypt_data -> header.msg_type = DATA; 
                 encrypt_data -> header.padding = 0; 
-                encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader);
+                encrypt_data -> header.msg_len = htons(sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader));
 
                 // populate udp packet
                 new_packet->payload_size = htons(sizeof(EncryptedData) + cipher_size);
@@ -489,7 +489,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
                 //fprintf(stderr, "HMAC over data: %.*s\n", MAC_SIZE, mac);
                 encrypt_data -> header.msg_type = DATA; 
                 encrypt_data -> header.padding = 0; 
-                encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader); 
+                encrypt_data -> header.msg_len = htons(sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader)); 
 
                 // populate udp packet
                 new_packet->payload_size = htons(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
@@ -515,7 +515,7 @@ Packet *create_fin() {
     Finished* server_fin = (Finished*)malloc(sizeof(Finished));
     server_fin -> header.msg_type = FINISHED; 
     server_fin -> header.padding = 0; 
-    server_fin -> header.msg_len = sizeof(Finished) - sizeof(SecurityHeader); 
+    server_fin -> header.msg_len = htons(sizeof(Finished) - sizeof(SecurityHeader)); 
     Packet* packet = (Packet*)malloc(sizeof(Packet) + sizeof(Finished));
     if (!packet) {
         perror("Failed to allocate memory for packet");
@@ -569,7 +569,7 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
 
     server_hello->sig_size = sig_size;
     free(server_nonce_sig);
-    server_hello -> header.msg_len = sizeof(ServerHello) + sizeof(Certificate) + cert_size + sig_size - sizeof(SecurityHeader);
+    server_hello -> header.msg_len = htons(sizeof(ServerHello) + sizeof(Certificate) + cert_size + sig_size - sizeof(SecurityHeader));
 
     size_t server_hello_size = sizeof(ServerHello) + cert_size + sig_size;
     Packet* packet = (Packet*)malloc(sizeof(Packet) + server_hello_size);

@@ -468,7 +468,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
 
                 encrypt_data -> header.msg_type = DATA; 
                 encrypt_data -> header.padding = 0; 
-                encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader);
+                encrypt_data -> header.msg_len = htons(sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader));
 
                 // populate udp packet
                 new_packet->payload_size = htons(sizeof(EncryptedData) + cipher_size);
@@ -498,7 +498,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
                 fprintf(stderr, "HMAC over data: %.*s\n", MAC_SIZE, mac);
                 encrypt_data -> header.msg_type = DATA; 
                 encrypt_data -> header.padding = 0; 
-                encrypt_data -> header.msg_len = sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader); 
+                encrypt_data -> header.msg_len = htons(sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader));
 
                 // populate udp packet
                 new_packet->payload_size = htons(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
@@ -548,7 +548,7 @@ Packet *create_client_hello(char* client_nonce_buf){
 
     client_hello -> header.msg_type = CLIENT_HELLO; 
     client_hello -> header.padding = 0; 
-    client_hello -> header.msg_len = sizeof(ClientHello) - sizeof(SecurityHeader); 
+    client_hello -> header.msg_len = htons(sizeof(ClientHello) - sizeof(SecurityHeader)); 
     //fprintf(stderr, "ch size %ld\n", sizeof(client_hello) - sizeof(SecurityHeader));
     Packet *packet = (Packet *)malloc(sizeof(Packet) + sizeof(client_hello));
     if (packet == nullptr) {
@@ -640,8 +640,9 @@ Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed
     
     key_exchange -> header.msg_type = KEY_EXCHANGE_REQUEST; 
     key_exchange -> header.padding = 0; 
-    key_exchange -> header.msg_len = sizeof(key_exchange) - sizeof(SecurityHeader) + nonce_signature_size + sizeof(Certificate) + pub_key_size + self_signature_size; //may be wrong
-    Packet *packet = (Packet *)malloc(sizeof(Packet) + key_exchange -> header.msg_len);
+    key_exchange -> header.msg_len = htons(sizeof(KeyExchangeRequest) - sizeof(SecurityHeader) + nonce_signature_size + sizeof(Certificate) + pub_key_size + self_signature_size); //may be wrong
+    
+    Packet *packet = (Packet *)malloc(sizeof(Packet) + ntohs(key_exchange->header.msg_len));
     if (packet == nullptr) {
         //fprintf(stderr, "Memory allocation failed for Packet.\n");
         free(key_exchange);
@@ -650,7 +651,7 @@ Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed
     memcpy(packet->data, key_exchange, sizeof(KeyExchangeRequest) + sizeof(Certificate) + sizeof(Certificate) + self_signature_size + pub_key_size + key_exchange -> sig_size);
     packet->packet_number = htonl(2); // You may need to set this accordingly
     packet->acknowledgment_number = htonl(0); // You may need to set this accordingly
-    packet->payload_size = htons(key_exchange -> header.msg_len);
+    packet->payload_size = htons(ntohs(key_exchange->header.msg_len));
 
     free(nonce_signature);
     free(key_exchange);
