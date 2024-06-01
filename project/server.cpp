@@ -109,7 +109,15 @@ int main(int argc, char *argv[]) {
             if(input_left == 1 && server_window[1] != NULL && input_window[1] == NULL){//can only make server hello if we recieve client hello and input window 0 is null
                 fprintf(stderr, "RECEIVE CLIENT HELLO\n");
                 Packet* client_hello_packet = server_window[1];
+
                 ClientHello *client_hello = (ClientHello *) client_hello_packet -> data;
+
+                SecurityHeader* header = &client_hello -> header;
+                if (header->msg_type != CLIENT_HELLO) {
+                    close(sockfd);
+                    return 1;
+                }
+
                 uint8_t client_comm_type = client_hello->comm_type;
                 uint8_t client_nonce[32] = {0};
                 memcpy(client_nonce, client_hello->client_nonce, 32);
