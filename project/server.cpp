@@ -155,8 +155,8 @@ int main(int argc, char *argv[]) {
                 Certificate* client_cert = (Certificate *) raw_cert_buf;
                     
                 uint8_t sig_size = key_exchange->sig_size;
-                uint8_t server_sig[32] = {0};
-                memcpy(server_sig, key_exchange->data + cert_size, sig_size);
+                uint8_t server_sig[sig_size] = {0};
+                memcpy(server_sig, key_exchange->data + client_cert_size, sig_size);
 
                 uint16_t key_len = ntohs(client_cert->key_len);
                 // int key_len = ntohs(client_cert->key_len);

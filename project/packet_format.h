@@ -26,6 +26,7 @@ typedef struct {
     uint16_t key_len;
     uint16_t padding;
     uint8_t data[0];
+    // public key
     // uint8_t signature[0];
 } Certificate;
 

@@ -154,7 +154,7 @@ int main(int argc, char *argv[])
 
                 // extract server signature
                 char* client_nonce_signed = (char*) malloc (server_sig_size);
-                memcpy(client_nonce_signed, server_hello->data + sizeof(Certificate), server_sig_size);
+                memcpy(client_nonce_signed, server_hello->data + server_cert_size, server_sig_size);
 
                 uint8_t* pub_key = (uint8_t*)malloc(key_len);
                 if (pub_key == NULL) {
