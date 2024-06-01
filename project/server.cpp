@@ -91,7 +91,8 @@ int main(int argc, char *argv[]) {
             // timer expired
             if (elapsed_time >= RTO) {
                 // retransmit leftmost unacked packet if not NULL
-                Packet* retransmit = input_window[input_left];
+                Packet* retransmit = input_window[input_left+ 1];
+                fprintf(stderr, "SERVER RETR PACK %d\n", input_left);
                 if (retransmit) {
                     //fprintf(stderr, "Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
                     int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&clientaddr, clientsize);
@@ -199,12 +200,12 @@ int main(int argc, char *argv[]) {
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
             uint16_t received_payload_size = ntohs(received_packet->payload_size);
             
-            fprintf(stderr, "received ack #: %d\n", received_ack_number);
+            // fprintf(stderr, "received ack #: %d\n", received_ack_number);
             fprintf(stderr, "received packet #: %d\n", received_packet_number);
-            fprintf(stderr, "received payload size: %d\n", received_payload_size);
+            // fprintf(stderr, "received payload size: %d\n", received_payload_size);
 
             // receive an ack --> update input window
-            if (received_ack_number != 0) {
+            if (received_ack_number != 0 || left_pointer == 1) {
                 //fprintf(stderr, "received ack: %d\n", received_ack_number);
                 
                 // receive ack for fin
@@ -219,11 +220,11 @@ int main(int argc, char *argv[]) {
                     }
                 }
 
-                if (received_ack_number > input_left) {
-                    fprintf(stderr, "RECEIVED ACK%d\n", received_ack_number);
-                    fprintf(stderr, "input left is %d\n", input_left);
+                if (received_ack_number >= input_left) {
+                    // fprintf(stderr, "RECEIVED ACK%d\n", received_ack_number);
+                    // fprintf(stderr, "input left is %d\n", input_left);
                     // free packets from input_left to ack #
-                    for (int i = input_left; i < received_ack_number; i++) {
+                    for (int i = input_left; i <=received_ack_number; i++) {
                         if (input_window[i] != NULL) {
                             free(input_window[i]);
                             input_window[i] = NULL;
@@ -322,13 +323,13 @@ int main(int argc, char *argv[]) {
 
                      // if not, send pure ack packet
                     if (new_packet == NULL) {
+
                         send_ACK(left_pointer, sockfd, clientaddr);
-                        fprintf(stderr, "we are here.%d\n", left_pointer);
+                       
                     }
                     // send data + ack
                     else {
-                        fprintf(stderr, "we are here.\n");
-                        new_packet->acknowledgment_number = htonl(left_pointer);
+                        new_packet->acknowledgment_number = htonl(left_pointer - 1);
                         input_window[curr_packet_num] = new_packet;
 
                         // input_window[curr_packet_num] = (Packet*)malloc(sizeof(Packet) + ntohs(new_packet->payload_size));
@@ -355,7 +356,6 @@ int main(int argc, char *argv[]) {
                     // send_ACK(left_pointer, sockfd, clientaddr);
                 }
                 else{
-                    //fprintf(stderr, "revd pack num%d\n",received_packet_number );
                     send_ACK(received_packet_number + 1, sockfd, clientaddr);
                 }
             }
@@ -419,7 +419,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
     if (bytesRead > 0) {
         // fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
         // fprintf(stderr, "current packet num %d\n", curr_packet_num);
-        // fprintf(stderr, "input left: %d\n", input_left);
+        fprintf(stderr, "input left: %d\n", input_left);
         // fprintf(stderr, "input right: %d\n", input_right);
 
         // create a new packet
@@ -599,6 +599,6 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
 // Sends cumulative ACK depending on the packet number received
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in clientaddr) {
     Packet ack_packet = {0};
-    ack_packet.acknowledgment_number = htonl(left_window_index);
+    ack_packet.acknowledgment_number = htonl(left_window_index - 1);
     sendto(sockfd, &ack_packet, sizeof(Packet), 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
 }

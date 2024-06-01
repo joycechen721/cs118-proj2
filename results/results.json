@@ -1,17 +1,121 @@
 {
     "tests": [
         {
-            "status": "failed",
+            "status": "passed",
             "name": "Compilation",
-            "output": "Compilation Error: /usr/bin/ld: server.o: Relocations in generic ELF (EM: 183)\n/usr/bin/ld: server.o: Relocations in generic ELF (EM: 183)\n/usr/bin/ld: server.o: Relocations in generic ELF (EM: 183)\n/usr/bin/ld: server.o: error adding symbols: file in wrong format\ncollect2: error: ld returned 1 exit status\nmake: *** [Makefile:17: server] Error 1\n",
+            "output": "",
             "visibility": "visible"
         },
         {
-            "name": "Total points: 0/100",
+            "status": "passed",
+            "name": "ASCII transfer (self)",
+            "output": "Transfer successful",
+            "visibility": "visible",
+            "score": 5,
+            "max_score": 5
+        },
+        {
+            "status": "passed",
+            "name": "Binary transfer (self)",
+            "output": "Transfer successful",
+            "visibility": "visible",
+            "score": 5,
+            "max_score": 5
+        },
+        {
+            "status": "passed",
+            "name": "Binary transfer (client->reference server)",
+            "output": "Transfer successful",
+            "visibility": "visible",
+            "score": 5,
+            "max_score": 5
+        },
+        {
+            "status": "passed",
+            "name": "Binary transfer (reference client->server)",
+            "output": "Transfer successful",
+            "visibility": "visible",
+            "score": 5,
+            "max_score": 5
+        },
+        {
+            "status": "passed",
+            "name": "Binary transfer (client->reference server, losses)",
+            "output": "Transfer successful",
+            "visibility": "visible",
+            "score": 5,
+            "max_score": 5
+        },
+        {
+            "status": "passed",
+            "name": "Binary transfer (reference client->server, losses)",
+            "output": "Transfer successful",
+            "visibility": "visible",
+            "score": 5,
+            "max_score": 5
+        },
+        {
+            "status": "passed",
+            "name": "Binary transfer (client->reference server, packet reordering)",
+            "output": "Transfer successful",
+            "visibility": "visible",
+            "score": 5,
+            "max_score": 5
+        },
+        {
+            "status": "passed",
+            "name": "Binary transfer (reference client->server, packet reordering)",
+            "output": "Transfer successful",
+            "visibility": "visible",
+            "score": 5,
+            "max_score": 5
+        },
+        {
+            "status": "passed",
+            "name": "Large file transfer (client->reference server)",
+            "output": "Transfer successful",
+            "visibility": "visible",
+            "score": 5,
+            "max_score": 5
+        },
+        {
+            "status": "passed",
+            "name": "Large file transfer (reference client->server)",
+            "output": "Transfer successful",
+            "visibility": "visible",
+            "score": 5,
+            "max_score": 5
+        },
+        {
+            "status": "failed",
+            "name": "Encrypt-then-MAC (reference client->server)",
+            "output": "client -> server transfer failed",
+            "visibility": "visible",
+            "score": 0,
+            "max_score": 10
+        },
+        {
+            "status": "failed",
+            "name": "Secure binary transfer (reference client->server)",
+            "output": "client -> server transfer failed",
+            "visibility": "visible",
+            "score": 0,
+            "max_score": 15
+        },
+        {
+            "status": "failed",
+            "name": "Secure binary transfer (client->reference server)",
+            "output": "client -> server transfer failed",
+            "visibility": "visible",
+            "score": 0,
+            "max_score": 15
+        },
+        {
+            "name": "Total points: 50/100",
             "status": "passed",
             "visibility": "visible"
         }
     ],
-    "score": 0,
+    "score": 50,
     "visibility": "visible"
 }
