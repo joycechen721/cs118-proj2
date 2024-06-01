@@ -649,7 +649,7 @@ Packet *create_key_exchange(char* client_nonce, char *server_nonce, char *signed
     memcpy(key_exchange->data + sizeof(Certificate) + self_signature_size + pub_key_size, nonce_signature, nonce_signature_size); 
     
     key_exchange -> header.msg_type = KEY_EXCHANGE_REQUEST; 
-    key_exchange -> header.padding = 0; 
+    key_exchange -> header.padding = htons(0); 
     key_exchange -> header.msg_len = htons(sizeof(KeyExchangeRequest) - sizeof(SecurityHeader) + nonce_signature_size + sizeof(Certificate) + pub_key_size + self_signature_size); //may be wrong
     
     Packet *packet = (Packet *)malloc(sizeof(Packet) + ntohs(key_exchange->header.msg_len));

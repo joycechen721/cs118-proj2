@@ -156,15 +156,15 @@ int main(int argc, char *argv[]) {
                     
                 uint8_t sig_size = key_exchange->sig_size;
                 uint8_t server_sig[32] = {0};
-                memcpy(server_sig, key_exchange->data + sig_size, 32);
+                memcpy(server_sig, key_exchange->data + cert_size, sig_size);
 
                 uint16_t key_len = ntohs(client_cert->key_len);
                 // int key_len = ntohs(client_cert->key_len);
                 uint8_t *client_public_key = client_cert->data;
                 load_peer_public_key((char*) client_cert->data, key_len);
 
-                uint8_t *signature = client_cert->data + key_len-1;
-                size_t signature_len = client_cert_size - (sizeof(uint16_t) + sizeof(uint16_t) + key_len);
+                uint8_t *signature = client_cert->data + key_len;
+                size_t signature_len = client_cert_size - sizeof(Certificate) - key_len;
                 // verify client certificate
                 // int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* authority)
                 if (!verify((char*) client_public_key, key_len, (char*) signature, signature_len, ec_peer_public_key)) {
