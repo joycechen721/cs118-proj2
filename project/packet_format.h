@@ -16,6 +16,7 @@ const uint8_t KEY_EXCHANGE_REQUEST = 16;
 const uint8_t FINISHED = 20;
 const uint8_t DATA = 255;
 
+// total 4 bytes
 typedef struct {
     uint8_t msg_type; // Using uint8_t for one byte representation
     uint8_t padding;
@@ -45,7 +46,7 @@ typedef struct {
     uint8_t server_nonce[32];
     uint8_t data[0];
     // Certificate server_cert; //variable
-    // uint8_t client_nonce[0];
+    // signature of client nonce -- variable;
 } ServerHello;
 
 typedef struct {
