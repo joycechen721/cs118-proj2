@@ -574,30 +574,30 @@ Packet *create_key_exchange(char* client_nonce_buf, ServerHello* server_hello, i
     fprintf(stderr, "signature len %ld\n", signature_len);
     fprintf(stderr, "server sig size %d\n", server_sig_size);
 
+    for (size_t i = 0; i < server_cert_size; i++) {
+        fprintf(stderr, "%02x ", (unsigned char)raw_cert_buf[i]);
+    }
+    fprintf(stderr, "\n");
+
     // extract signature of client nonce
     char* client_nonce_signed = (char*) malloc(server_sig_size);
     memcpy(client_nonce_signed, server_hello->data + server_cert_size, server_sig_size);
-    
+
     // Verify server signature inside of the certificate
-    if (verify((char *) server_public_key, key_len, (char*) signature, signature_len, ec_ca_public_key) != 1) {
+    if (!verify(server_public_key, key_len, (char*) signature, signature_len, ec_ca_public_key)) {
         fprintf(stderr, "Verification of server certificate failed.\n");
         close(sockfd);
         exit(EXIT_FAILURE);
     }
-    
+
     // load server public key
     load_peer_public_key(server_public_key, key_len);
     if(ec_peer_public_key == NULL){
         fprintf(stderr, "errrrrm what the sigma\n");
     }
 
-    for (size_t i = 0; i < key_len; i++) {
-        fprintf(stderr, "%02x ", (unsigned char)server_public_key[i]);
-    }
-    fprintf(stderr, "\n");
-
     // verify server signature over client nonce
-    if (verify((char*)client_nonce_buf, 32, (char*)client_nonce_signed, server_sig_size, ec_peer_public_key) != 1) {
+    if (!verify((char*)client_nonce_buf, 32, (char*)client_nonce_signed, server_sig_size, ec_peer_public_key)) {
         fprintf(stderr, "Verification of signature failed.\n");
         close(sockfd);
         exit(EXIT_FAILURE);

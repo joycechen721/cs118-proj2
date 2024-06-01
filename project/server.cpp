@@ -580,14 +580,14 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
     memcpy(server_hello->data, certificate, cert_size);
     server_hello->cert_size = htons(cert_size);
 
-    char *server_nonce_sig = (char*)malloc(sig_size);
-    sign((char*)client_nonce, 32, server_nonce_sig);
-    memcpy(server_hello->data + cert_size, server_nonce_sig, sig_size);
-    
     for (size_t i = 0; i < cert_size; i++) {
         fprintf(stderr, "%02x ", (unsigned char)certificate[i]);
     }
     fprintf(stderr, "\n");
+
+    char *server_nonce_sig = (char*)malloc(sig_size);
+    sign((char*)client_nonce, 32, server_nonce_sig);
+    memcpy(server_hello->data + cert_size, server_nonce_sig, sig_size);
     //fprintf(stderr, "sig size %ld\n", cert_size + sig_size);   
 
     server_hello->sig_size = sig_size;
