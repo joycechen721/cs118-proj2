@@ -108,7 +108,7 @@ void derive_keys() {
 size_t sign(char* data, size_t size, char* signature) {
     size_t sig_size = 255;
     EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
-
+    
     EVP_DigestSignInit(mdctx, NULL, EVP_sha256(), NULL, ec_priv_key);
     EVP_DigestSignUpdate(mdctx, data, size);
     EVP_DigestSignFinal(mdctx, (unsigned char*) signature, &sig_size);
@@ -123,7 +123,7 @@ int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* 
         perror("error1");
         return 0; 
     }
-    if (EVP_DigestVerifyInit(mdctx, NULL, EVP_sha256(), NULL, authority) != 1) {
+    if (EVP_DigestVerifyInit(mdctx, 0, EVP_sha256(), NULL, authority) != 1) {
         perror("error2");
         printf("wererwer\n");
         EVP_MD_CTX_free(mdctx);

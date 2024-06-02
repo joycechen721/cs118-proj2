@@ -510,7 +510,7 @@ Packet *create_client_hello(char* client_nonce_buf){
     // Initialize comm_type based on flag
     client_hello->comm_type = 1; 
     // Initialize padding to zero
-    client_hello->padding = 0; 
+    // memset(client_hello->padding, 0, 2);
     // Generate client nonce
     // char client_nonce_buf[32]; // 32 bytes for the nonce
     generate_nonce(client_nonce_buf, 32); // fill nonce_buf with 32 bytes of data
