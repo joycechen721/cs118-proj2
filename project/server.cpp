@@ -124,9 +124,9 @@ int main(int argc, char *argv[]) {
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
             uint16_t received_payload_size = ntohs(received_packet->payload_size);
             
-            fprintf(stderr, "received ack #: %d\n", received_ack_number);
-            fprintf(stderr, "received packet #: %d\n", received_packet_number);
-            // fprintf(stderr, "received payload size: %d\n", received_payload_size);
+            // fprintf(stderr, "received ack #: %d\n", received_ack_number);
+            // fprintf(stderr, "received packet #: %d\n", received_packet_number);
+            fprintf(stderr, "received payload size: %d\n", received_payload_size);
 
             // receive an ack --> update input window
             if (received_ack_number != 0 ) {
@@ -171,7 +171,57 @@ int main(int argc, char *argv[]) {
             // receive data --> send an ack
             if (received_packet_number != 0) {
                 // Update window to reflect new packet
-                // fprintf(stderr, "help%d\n", received_packet_number);
+                if (!handshake && flag == 1) {
+                    uint8_t *payload = received_packet->data;
+                    EncryptedData* encrypted = (EncryptedData*) payload;
+                    uint16_t encrypted_data_size = ntohs(encrypted->payload_size);
+                    
+                    // Allocate memory for the encrypted data plus IV_SIZE
+                    char* encrypted_data = (char*) malloc(encrypted_data_size + IV_SIZE);
+                    fprintf(stderr, "help%d\n", encrypted_data_size + IV_SIZE);
+                    // Copy the IV and encrypted data from the payload
+                    memcpy(encrypted_data, encrypted->data - IV_SIZE, encrypted_data_size + IV_SIZE);
+                    // Verify the packet MAC if encryption with MAC is enabled
+                    if (encrypt_mac) {
+                        char* mac_code = (char*) malloc(MAC_SIZE);
+                        // Copy the MAC from the end of the encrypted data
+                        memcpy(mac_code, encrypted->data + encrypted_data_size, MAC_SIZE);
+                        if (memcmp(mac_code, encrypted->data + encrypted_data_size, MAC_SIZE + 1) == 0) {
+                            fprintf(stderr, "MACs match\n");
+                        } else {
+                            fprintf(stderr, "MACs do not match\n");
+                        }
+                        for (int i = 0; i < MAC_SIZE; i++) {
+                            // fprintf(stderr, "%d\n", i);
+                            fprintf(stderr, "%02x", (unsigned char)encrypted->data[i] + encrypted_data_size);
+                        }
+                        
+                        // Compute the expected MAC
+                        char* computed_mac_code = (char*) malloc(MAC_SIZE);
+                        hmac(encrypted_data, encrypted_data_size + IV_SIZE, computed_mac_code);
+                        for (int i = 0; i < MAC_SIZE; i++) {
+                            fprintf(stderr, "%02x", (unsigned char)computed_mac_code[i]);
+                        }
+                        fprintf(stderr, "\n");
+                        
+                        // Compare the received and computed MACs
+                        if (memcmp(encrypted->data + encrypted_data_size, computed_mac_code, MAC_SIZE) != 0) {
+                            fprintf(stderr, "MAC code verification failed\n");
+                            free(mac_code);
+                            free(computed_mac_code);
+                            free(encrypted_data);
+                            close(sockfd);
+                            exit(EXIT_FAILURE);
+                        }
+                        fprintf(stderr, "Verification of packet mac code succeeded.\n");
+                        
+                        free(mac_code);
+                        free(computed_mac_code);
+                    }
+                    
+                    // Free the allocated memory for encrypted data
+                    free(encrypted_data);
+                }
                 server_window[received_packet_number] = (Packet*)malloc(sizeof(Packet) + received_payload_size);
                 if (server_window[received_packet_number] == NULL) {
                     perror("Memory allocation failed");
@@ -182,55 +232,28 @@ int main(int argc, char *argv[]) {
                 memcpy(server_window[received_packet_number], received_packet, sizeof(Packet) + received_payload_size);
         
                 // Update left pointer until it points to nothing, adjust right pointer too
-                if(!handshake){
+                if(!handshake){     
                     while (server_window[left_pointer] != NULL) {
-                        uint8_t *payload = received_packet->data;
-                        // decrypt data
-                        if (flag == 1) {
-                            fprintf(stderr, "receive encrypted data\n");
-                            EncryptedData* encrypted = (EncryptedData*) payload;
-                            uint16_t encrypted_data_size = ntohs(encrypted->payload_size);
-                            // data will be payload - mac size if no encrypt mac
-                            if (encrypt_mac) {
-                                encrypted_data_size = encrypted->payload_size - MAC_SIZE + IV_SIZE;
-                            }
-                            char* encrypted_data = (char*) malloc (encrypted_data_size);
-                            memcpy(encrypted_data, encrypted->data - IV_SIZE, encrypted_data_size);
-                            
-                            if (encrypt_mac) {
-                                char* mac_code = (char*) malloc (MAC_SIZE);
-                                memcpy(mac_code, encrypted->data + encrypted_data_size - IV_SIZE, MAC_SIZE);
-                                
-                                char* computed_mac_code = (char*) malloc (MAC_SIZE);
-                                hmac(encrypted_data, encrypted_data_size, computed_mac_code);
-
-                                if (memcmp(mac_code, computed_mac_code, MAC_SIZE) != 0) {
-                                    fprintf(stderr, "MAC code verification failed\n");
-                                    free(mac_code);
-                                    free(computed_mac_code);
-                                    close(sockfd);
-                                    exit(EXIT_FAILURE);
-                                }
-                                fprintf(stderr, "Verification of packet mac code succeeded.\n");
-                                free(mac_code);
-                                free(computed_mac_code);
-                            }
-                            
-                            // write(1, decrypted_data, size);
-
-                            // free(encrypted_data);
-                        }   
-                        // not encrypted data
-                        else {
-                            // fprintf(stderr, "sdfadfd %d", received_payload_size);
-                            write(STDOUT_FILENO, payload, received_payload_size);
-                            // fprintf(stdout, "%.*s", received_payload_size, payload);
-                            // fflush(stdout);
+                        // write all data in buffer (regardless of flag bc buffer contents should be unecrypted alr)
+                        // write packet is leftmost packet in buffer
+                        Packet *current_write_packet = (Packet*) server_window[left_pointer];
+                        uint8_t* current_write_packet_data = current_write_packet -> data; 
+                        // fprintf(stdout, "%.*s", received_payload_size, payload);
+                        // fflush(stdout);
+                        if(flag == 0){
+                            write(STDOUT_FILENO, current_write_packet_data, ntohs(current_write_packet-> payload_size));
                         }
-                        if (server_window[left_pointer] != NULL) {
-                            free(server_window[left_pointer]);
-                            server_window[left_pointer] = NULL;
+                        else{
+                            EncryptedData* encrypted = (EncryptedData*) current_write_packet_data;
+                            uint16_t encrypted_data_size = encrypted->payload_size;
+                            char iv[IV_SIZE];
+                            memcpy(iv, (char*) encrypted->init_vector, IV_SIZE);
+                            char decrypted_data[encrypted_data_size];
+                            size_t size = decrypt_cipher((char*)encrypted -> data, encrypted_data_size, iv, decrypted_data, 0);
+                            write(1, decrypted_data, size); //check later
                         }
+                        free(server_window[left_pointer]);
+                        server_window[left_pointer] = NULL;
                         left_pointer += 1;
                         if (left_pointer < MAX_PACKET_SEND_SIZE - 20) {
                             right_pointer += 1;
@@ -242,12 +265,13 @@ int main(int argc, char *argv[]) {
 
                      // if not, send pure ack packet
                     if (new_packet == NULL) {
-                        send_ACK(received_packet_number, sockfd, clientaddr);
+
+                        send_ACK(left_pointer, sockfd, clientaddr);
+                       
                     }
                     // send data + ack
                     else {
-                        // fprintf(stderr, "we are here.\n");
-                        new_packet->acknowledgment_number = htonl(left_pointer);
+                        new_packet->acknowledgment_number = htonl(left_pointer - 1);
                         input_window[curr_packet_num] = new_packet;
 
                         // input_window[curr_packet_num] = (Packet*)malloc(sizeof(Packet) + ntohs(new_packet->payload_size));
@@ -265,8 +289,6 @@ int main(int argc, char *argv[]) {
                         if (did_send < 0) return errno;
 
                         // reset timer
-
-                        
                         if (!timer_active) {
                             timer_active = true;
                             gettimeofday(&timer_start, NULL);
@@ -275,6 +297,9 @@ int main(int argc, char *argv[]) {
                     // Now we can send the cumulative ack
                     // send_ACK(left_pointer, sockfd, clientaddr);
                 }
+                // else{
+                //     send_ACK(received_packet_number + 1, sockfd, clientaddr);
+                // }
                 else{
                     //fprintf(stderr, "revd pack num%d\n",received_packet_number );
                     // send_ACK(received_packet_number + 1, sockfd, clientaddr);
