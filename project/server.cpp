@@ -12,7 +12,7 @@
 
 // helper functions
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in clientaddr);
-Packet *create_server_hello(int comm_type, uint8_t *client_nonce);
+Packet *create_server_hello(int comm_type, uint8_t *client_nonce, uint8_t *server_nonce_buf);
 Packet *create_fin();
 Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int &curr_packet_num, int input_left, int input_right, bool &timer_active, struct timeval &timer_start);
 
@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
         load_private_key(private_key_file);
         load_certificate(certificate_file);
     }
-
+    uint8_t server_nonce_buf[32];
     while (true) {
         
         // retransmission from rto
@@ -120,6 +120,7 @@ int main(int argc, char *argv[]) {
             }
             // fprintf(stderr, "incoming packet from client\n");
             Packet* received_packet = (Packet*)client_buf;
+            
             uint32_t received_packet_number = ntohl(received_packet->packet_number);
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
             uint16_t received_payload_size = ntohs(received_packet->payload_size);
@@ -139,7 +140,7 @@ int main(int argc, char *argv[]) {
                     if (encrypt_mac) {
                         derive_keys();
 
-                        //fprintf(stderr, "Encryption key: %.*s\n", SECRET_SIZE, enc_key);
+                        // fprintf(stderr, "Encryption key: %.*s\n", SECRET_SIZE, enc_key);
                         //fprintf(stderr, "Authentication key: %.*s\n", SECRET_SIZE, mac_key);
                     }
                 }
@@ -172,52 +173,37 @@ int main(int argc, char *argv[]) {
             if (received_packet_number != 0) {
                 // Update window to reflect new packet
                 if (!handshake && flag == 1) {
-                    uint8_t *payload = received_packet->data;
-                    EncryptedData* encrypted = (EncryptedData*) payload;
+                    EncryptedData* encrypted = (EncryptedData*) received_packet -> data;
                     uint16_t encrypted_data_size = ntohs(encrypted->payload_size);
-                    
                     // Allocate memory for the encrypted data plus IV_SIZE
                     char* encrypted_data = (char*) malloc(encrypted_data_size + IV_SIZE);
-                    fprintf(stderr, "help%d\n", encrypted_data_size + IV_SIZE);
                     // Copy the IV and encrypted data from the payload
-                    memcpy(encrypted_data, encrypted->data - IV_SIZE, encrypted_data_size + IV_SIZE);
+                    memcpy(encrypted_data, encrypted->init_vector, encrypted_data_size + IV_SIZE);
+                    if (memcmp(encrypted_data, encrypted->init_vector , IV_SIZE) != 0){
+                        fprintf(stderr, "verification failed\n");
+                    }
                     // Verify the packet MAC if encryption with MAC is enabled
                     if (encrypt_mac) {
-                        char* mac_code = (char*) malloc(MAC_SIZE);
-                        // Copy the MAC from the end of the encrypted data
-                        memcpy(mac_code, encrypted->data + encrypted_data_size, MAC_SIZE);
-                        if (memcmp(mac_code, encrypted->data + encrypted_data_size, MAC_SIZE + 1) == 0) {
-                            fprintf(stderr, "MACs match\n");
-                        } else {
-                            fprintf(stderr, "MACs do not match\n");
-                        }
-                        for (int i = 0; i < MAC_SIZE; i++) {
-                            // fprintf(stderr, "%d\n", i);
-                            fprintf(stderr, "%02x", (unsigned char)encrypted->data[i] + encrypted_data_size);
-                        }
-                        
-                        // Compute the expected MAC
-                        char* computed_mac_code = (char*) malloc(MAC_SIZE);
+                        char* received_mac = (char*) encrypted->data + encrypted_data_size;
+                        char computed_mac_code[encrypted_data_size + IV_SIZE];
                         hmac(encrypted_data, encrypted_data_size + IV_SIZE, computed_mac_code);
-                        for (int i = 0; i < MAC_SIZE; i++) {
-                            fprintf(stderr, "%02x", (unsigned char)computed_mac_code[i]);
-                        }
-                        fprintf(stderr, "\n");
-                        
-                        // Compare the received and computed MACs
-                        if (memcmp(encrypted->data + encrypted_data_size, computed_mac_code, MAC_SIZE) != 0) {
+                        fprintf(stderr, "Received MAC: ");
+                        // for (int i = 0; i < MAC_SIZE; i++) {
+                        //     fprintf(stderr, "%02X ", (unsigned char)received_mac[i]);
+                        // }
+                        // fprintf(stderr, "\nComputed MAC: ");
+                        // for (int i = 0; i < MAC_SIZE; i++) {
+                        //     fprintf(stderr, "%02X ", (unsigned char)computed_mac_code[i]);
+                        // 
+                        if (memcmp(computed_mac_code, received_mac, MAC_SIZE) != 0) {
                             fprintf(stderr, "MAC code verification failed\n");
-                            free(mac_code);
-                            free(computed_mac_code);
                             free(encrypted_data);
                             close(sockfd);
                             exit(EXIT_FAILURE);
                         }
                         fprintf(stderr, "Verification of packet mac code succeeded.\n");
-                        
-                        free(mac_code);
-                        free(computed_mac_code);
                     }
+
                     
                     // Free the allocated memory for encrypted data
                     free(encrypted_data);
@@ -245,11 +231,12 @@ int main(int argc, char *argv[]) {
                         }
                         else{
                             EncryptedData* encrypted = (EncryptedData*) current_write_packet_data;
-                            uint16_t encrypted_data_size = encrypted->payload_size;
+                            uint16_t encrypted_data_size = ntohs(encrypted->payload_size);
                             char iv[IV_SIZE];
                             memcpy(iv, (char*) encrypted->init_vector, IV_SIZE);
                             char decrypted_data[encrypted_data_size];
                             size_t size = decrypt_cipher((char*)encrypted -> data, encrypted_data_size, iv, decrypted_data, 0);
+                            fprintf(stderr, "DCSIZE%ld\n", size);
                             write(1, decrypted_data, size); //check later
                         }
                         free(server_window[left_pointer]);
@@ -316,10 +303,16 @@ int main(int argc, char *argv[]) {
                         }
 
                         uint8_t client_comm_type = client_hello->comm_type;
+                        if(client_comm_type == 1){
+                            encrypt_mac = true;
+                        }
+                        else{
+                            encrypt_mac = false;
+                        }
                         uint8_t* client_nonce = (uint8_t*)malloc(32);
                         memcpy(client_nonce, client_hello->client_nonce, 32);
                         // create & send server hello
-                        Packet* server_hello = create_server_hello(client_comm_type, client_nonce);
+                        Packet* server_hello = create_server_hello(client_comm_type, client_nonce, server_nonce_buf);
                         input_window[1] = server_hello;
                         // ServerHello* srvh = (ServerHello*) server_hello -> data; 
 
@@ -343,7 +336,6 @@ int main(int argc, char *argv[]) {
                             close(sockfd);
                             return 1;
                         }
-
                         // Extract certificate from key_exchange-> data
                         uint16_t client_cert_size = ntohs(key_exchange->cert_size);
                         uint8_t raw_cert_buf[client_cert_size];
@@ -351,31 +343,30 @@ int main(int argc, char *argv[]) {
                         Certificate* client_cert = (Certificate *) raw_cert_buf;
                             
                         // this is the signature of the server nonce
-                        // uint8_t sig_size = key_exchange->sig_size;
-                        // uint8_t server_sig[sig_size] = {0};
-                        // memcpy(server_sig, key_exchange + client_cert_size, sig_size);
-
+                        uint8_t sig_size = key_exchange->sig_size;
+                        uint8_t client_sig[sig_size];
+                        memcpy(client_sig, key_exchange -> data + client_cert_size, sig_size);
                         uint16_t key_len = ntohs(client_cert->key_len);
                         // int key_len = ntohs(client_cert->key_len);
                         uint8_t *client_public_key = client_cert->data;
                         load_peer_public_key((char*) client_cert->data, key_len);
 
-                        // uint8_t *signature = client_cert->data + key_len;
-                        // size_t signature_len = client_cert_size - sizeof(Certificate) - key_len;
+                        uint8_t *signature = client_cert->data + key_len;
+                        size_t signature_len = client_cert_size - sizeof(Certificate) - key_len;
                         // verify client certificate
                         // int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* authority)
-                        // if (!verify((char*) client_public_key, key_len, (char*) signature, signature_len, ec_peer_public_key)) {
-                        //     //fprintf(stderr, "Verification of client certificate failed.\n");
-                        //     close(sockfd);
-                        //     exit(EXIT_FAILURE);
-                        // }
+                        if (verify((char*) client_public_key, key_len, (char*) signature, signature_len, ec_peer_public_key) != 1) {
+                            fprintf(stderr, "Verification of client certificate failed.\n");
+                            close(sockfd);
+                            exit(EXIT_FAILURE);
+                        }
                         
-                        // // Verify client nonce
-                        // if (!verify((char*) server_sig, sig_size, (char*) signature, signature_len, ec_peer_public_key)) {
-                        //     fprintf(stderr, "Verification of client signature failed.\n");
-                        //     close(sockfd);
-                        //     exit(EXIT_FAILURE);
-                        // }
+                        // Verify client nonce
+                        if (verify((char*) server_nonce_buf, 32, (char*)client_sig, sig_size, ec_peer_public_key) != 1) {
+                            fprintf(stderr, "Verification of client signature failed.\n");
+                            close(sockfd);
+                            exit(EXIT_FAILURE);
+                        }
 
                         // derive shared secret
                         derive_secret();
@@ -443,10 +434,10 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
     int bytesRead = 0;
     if (curr_packet_num >= input_left && curr_packet_num <= input_right){
         if (flag == 1 && encrypt_mac) {
-            bytesRead = read(STDIN_FILENO, read_buf, 959);
+            bytesRead = read(STDIN_FILENO, read_buf, 898);
         } 
         else if (flag == 1 && !encrypt_mac) {
-            bytesRead = read(STDIN_FILENO, read_buf, 991);
+            bytesRead = read(STDIN_FILENO, read_buf, 930);
         } 
         else {
             bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
@@ -459,7 +450,6 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
     if (bytesRead > 0) {
         // fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
         // fprintf(stderr, "current packet num %d\n", curr_packet_num);
-        fprintf(stderr, "input left: %d\n", input_left);
 
         // create a new packet
         Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
@@ -470,10 +460,9 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
         if (flag == 1) {
             //fprintf(stderr, "ENCRYPT DATA\n");
             // output_size = input_size + (block_size - (input_size % block_size))
-
             size_t block_size = EVP_CIPHER_block_size(EVP_aes_256_cbc());
             size_t cipher_buf_size = bytesRead + (block_size - (bytesRead % block_size));
-            //fprintf(stderr, "cipher buf size: %ld \n", cipher_buf_size);
+            fprintf(stderr, "cipher buf size: %ld \n", cipher_buf_size);
             char *cipher = (char *)malloc(cipher_buf_size);
             char iv[IV_SIZE];
             
@@ -499,7 +488,6 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
                 // populate udp packet
                 new_packet->payload_size = htons(sizeof(EncryptedData) + cipher_size);
                 memcpy(new_packet->data, encrypt_data, sizeof(EncryptedData) + cipher_size);
-                
                 // free(cipher);
                 // free(encrypt_data);
             }
@@ -573,7 +561,7 @@ Packet *create_fin() {
 }
 
 // send ServerHello message back to client
-Packet *create_server_hello(int comm_type, uint8_t *client_nonce) {
+Packet *create_server_hello(int comm_type, uint8_t *client_nonce, uint8_t *server_nonce_buf) {
     uint8_t sig_size = sign((char*)client_nonce, 32, 0);
     if (sig_size == 0) {
         fprintf(stderr, "Invalid signature size\n");
@@ -591,7 +579,6 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce) {
     server_hello->comm_type = comm_type;
     // fprintf(stderr, "c type %d\n", comm_type);
     // Generate server nonce
-    uint8_t server_nonce_buf[32];
     memset(server_nonce_buf, 0, 32);
     generate_nonce((char*)server_nonce_buf, 32);
     memcpy(server_hello->server_nonce, server_nonce_buf, 32);
