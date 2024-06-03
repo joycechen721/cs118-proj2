@@ -170,6 +170,42 @@ int main(int argc, char *argv[])
 
             // also receive data --> send an ack
             if (received_packet_number != 0) {
+                if (!handshake && flag == 1) {
+                    EncryptedData* encrypted = (EncryptedData*) received_packet -> data;
+                    uint16_t encrypted_data_size = ntohs(encrypted->payload_size);
+                    // Allocate memory for the encrypted data plus IV_SIZE
+                    char* encrypted_data = (char*) malloc(encrypted_data_size + IV_SIZE);
+                    // Copy the IV and encrypted data from the payload
+                    memcpy(encrypted_data, encrypted->init_vector, encrypted_data_size + IV_SIZE);
+                    if (memcmp(encrypted_data, encrypted->init_vector , IV_SIZE) != 0){
+                        fprintf(stderr, "verification failed\n");
+                    }
+                    // Verify the packet MAC if encryption with MAC is enabled
+                    if (encrypt_mac) {
+                        char* received_mac = (char*) encrypted->data + encrypted_data_size;
+                        char computed_mac_code[encrypted_data_size + IV_SIZE];
+                        hmac(encrypted_data, encrypted_data_size + IV_SIZE, computed_mac_code);
+                        fprintf(stderr, "Received MAC: ");
+                        // for (int i = 0; i < MAC_SIZE; i++) {
+                        //     fprintf(stderr, "%02X ", (unsigned char)received_mac[i]);
+                        // }
+                        // fprintf(stderr, "\nComputed MAC: ");
+                        // for (int i = 0; i < MAC_SIZE; i++) {
+                        //     fprintf(stderr, "%02X ", (unsigned char)computed_mac_code[i]);
+                        // 
+                        if (memcmp(computed_mac_code, received_mac, MAC_SIZE) != 0) {
+                            fprintf(stderr, "MAC code verification failed\n");
+                            free(encrypted_data);
+                            close(sockfd);
+                            exit(EXIT_FAILURE);
+                        }
+                        fprintf(stderr, "Verification of packet mac code succeeded.\n");
+                    }
+
+                    
+                    // Free the allocated memory for encrypted data
+                    free(encrypted_data);
+                }
                 // Update window to reflect new packet
                 // //fprintf(stderr, "RECEIVE DATA (NON ACK) %d\n", received_packet_number);
                 server_window[received_packet_number] = (Packet*)malloc(sizeof(Packet) + received_payload_size);
@@ -183,61 +219,29 @@ int main(int argc, char *argv[])
                 memcpy(server_window[received_packet_number], received_packet, sizeof(Packet) + received_payload_size);
 
                 // Update left pointer until it points to nothing, adjust right pointer too
-                if(!handshake){
+                if(!handshake){     
                     while (server_window[left_pointer] != NULL) {
-                        uint8_t *payload = received_packet->data;
-                        // decrypt data
-                        if (flag == 1) {
-                            //fprintf(stderr, "receive encrypted data\n");
-                            EncryptedData* encrypted = (EncryptedData*) payload;
+                        // write all data in buffer (regardless of flag bc buffer contents should be unecrypted alr)
+                        // write packet is leftmost packet in buffer
+                        Packet *current_write_packet = (Packet*) server_window[left_pointer];
+                        uint8_t* current_write_packet_data = current_write_packet -> data; 
+                        // fprintf(stdout, "%.*s", received_payload_size, payload);
+                        // fflush(stdout);
+                        if(flag == 0){
+                            write(STDOUT_FILENO, current_write_packet_data, ntohs(current_write_packet-> payload_size));
+                        }
+                        else{
+                            EncryptedData* encrypted = (EncryptedData*) current_write_packet_data;
                             uint16_t encrypted_data_size = ntohs(encrypted->payload_size);
-                            // data will be payload - mac size if no encrypt mac
-                            if (encrypt_mac) {
-                                encrypted_data_size -= MAC_SIZE;
-                            }
-                            char* encrypted_data = (char*) malloc (encrypted_data_size);
-                            memcpy(encrypted_data, encrypted->data, encrypted_data_size);
-                            // //fprintf(stderr, "encrypted size %d: \n", encrypted_data_size);
-                            
                             char iv[IV_SIZE];
                             memcpy(iv, (char*) encrypted->init_vector, IV_SIZE);
-                            
                             char decrypted_data[encrypted_data_size];
-                            size_t size = decrypt_cipher(encrypted_data, encrypted_data_size, iv, decrypted_data, 0);
-                            // //fprintf(stderr, "Decrypted plaintext: %.*s\n", (int) size, decrypted_data);
-
-                            unsigned char padding_size = decrypted_data[encrypted_data_size - 1];
-
-                            // verify the packet MAC
-                            if (encrypt_mac) {
-                                char* mac_code = (char*) malloc (MAC_SIZE);
-                                memcpy(mac_code, encrypted->data + encrypted_data_size, MAC_SIZE);
-
-                                if (!verify((char *) decrypted_data, size - padding_size, (char*) mac_code, MAC_SIZE, ec_peer_public_key)) {
-                                    //fprintf(stderr, "Verification of packet mac code failed.\n");
-                                    free(mac_code);
-                                    close(sockfd);
-                                    exit(EXIT_FAILURE);
-                                }
-                                //fprintf(stderr, "Verification of packet mac code succeeded.\n");
-                                free(mac_code);
-                            }
-
-                            write(1, decrypted_data, size - padding_size);
-
-                            // free(encrypted_data);
+                            size_t size = decrypt_cipher((char*)encrypted -> data, encrypted_data_size, iv, decrypted_data, 0);
+                            fprintf(stderr, "DCSIZE%ld\n", size);
+                            write(1, decrypted_data, size); //check later
                         }
-                        // not encrypted data
-                        else {
-                            write(STDOUT_FILENO, payload, received_payload_size);
-                            // fprintf(stdout, "%.*s", received_payload_size, payload);
-                            // fflush(stdout);
-                        }
-                        if (server_window[left_pointer] != NULL) {
-                            // printf("here: %d\n", left_pointer);
-                            free(server_window[left_pointer]);
-                            server_window[left_pointer] = NULL;
-                        }
+                        free(server_window[left_pointer]);
+                        server_window[left_pointer] = NULL;
                         left_pointer += 1;
                         if (left_pointer < MAX_PACKET_SEND_SIZE - 20) {
                             right_pointer += 1;
@@ -247,14 +251,25 @@ int main(int argc, char *argv[])
                     // check whether there is data from input to send as well as ack
                     Packet* new_packet = read_from_stdin(flag, encrypt_mac, input_window, curr_packet_num, input_left, input_right, timer_active, timer_start);
 
-                    // if not, send pure ack packet
+                     // if not, send pure ack packet
                     if (new_packet == NULL) {
-                        send_ACK(received_packet_number + 1, sockfd, serveraddr);
+
+                        send_ACK(left_pointer, sockfd, serveraddr);
+                       
                     }
                     // send data + ack
                     else {
-                        new_packet->acknowledgment_number = htonl(left_pointer);
+                        new_packet->acknowledgment_number = htonl(left_pointer - 1);
                         input_window[curr_packet_num] = new_packet;
+
+                        // input_window[curr_packet_num] = (Packet*)malloc(sizeof(Packet) + ntohs(new_packet->payload_size));
+                        // if (input_window[curr_packet_num] == NULL) {
+                        //     perror("Memory allocation failed");
+                        //     close(sockfd);
+                        //     return 1;
+                        // }
+                        // memcpy(input_window[curr_packet_num], new_packet, sizeof(Packet) + ntohs(new_packet->payload_size));
+                        // fprintf(stderr, "meow: %d\n", ntohs(new_packet->payload_size));
                         curr_packet_num += 1;
 
                         // send the packet
@@ -268,7 +283,7 @@ int main(int argc, char *argv[])
                         }
                     }
                     // Now we can send the cumulative ack
-                    // send_ACK(left_pointer, sockfd, serveraddr);
+                    // send_ACK(left_pointer, sockfd, clientaddr);
                 }
                 // doing security handshake 
                 else {
@@ -276,7 +291,6 @@ int main(int argc, char *argv[])
                         fprintf(stderr, "RECEIVED SERVER HELLO\n");
                         Packet* server_hello_packet = server_window[1];
                         ServerHello *server_hello = (ServerHello *) server_hello_packet -> data;
-
                         SecurityHeader* header = &server_hello -> header;
                         if (header->msg_type != SERVER_HELLO) {
                             fprintf(stderr, "expected server hello but didn't receive it\n");
@@ -309,6 +323,7 @@ int main(int argc, char *argv[])
                         free(server_window[1]);
                         server_window[1] = NULL;
                         left_pointer += 1;
+                        input_left +=1;
                         fprintf(stderr, "SENT KEY EXCHANGE\n");
                     }
                     else if (curr_packet_num == 3) {
@@ -335,6 +350,7 @@ int main(int argc, char *argv[])
                         free(server_window[2]);
                         server_window[2] = NULL;
                         left_pointer += 1;
+                        input_left +=1;
                     }
                 }
             }
@@ -387,10 +403,10 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
     int bytesRead = 0;
     if (curr_packet_num >= input_left && curr_packet_num <= input_right){
         if (flag == 1 && encrypt_mac) {
-            bytesRead = read(STDIN_FILENO, read_buf, 959);
+            bytesRead = read(STDIN_FILENO, read_buf, 898);
         } 
         else if (flag == 1 && !encrypt_mac) {
-            bytesRead = read(STDIN_FILENO, read_buf, 991);
+            bytesRead = read(STDIN_FILENO, read_buf, 930);
         } 
         else {
             bytesRead = read(STDIN_FILENO, read_buf, MAX_SEGMENT_SIZE);
@@ -547,21 +563,13 @@ Packet *create_key_exchange(char* client_nonce_buf, ServerHello* server_hello, i
     
     // extract server certificate
     uint16_t server_cert_size = ntohs(server_hello->cert_size);
-    // Check if the server certificate size is valid
-    if (server_cert_size == 0) {
-        fprintf(stderr, "Invalid server certificate size: %u\n", server_cert_size);
-        close(sockfd);
-        exit(EXIT_FAILURE);
-    }
-    // fprintf(stderr, "here2 %d\n", server_cert_size);
-    // raw cert buf contains the server certificate now
+
     uint8_t raw_cert_buf[server_cert_size];
     memcpy(raw_cert_buf, server_hello->data, server_cert_size);
+
     // cast to a Certificate pointer for easier parsing
     Certificate* server_cert = (Certificate*) raw_cert_buf;
     uint16_t key_len = ntohs(server_cert->key_len);
-    fprintf(stderr, "certificate key length %d\n", key_len);
-    fprintf(stderr, "certificate length %u\n", server_cert_size);
 
     // get server public key from certificate
     char* server_public_key = (char*)malloc(key_len);
@@ -570,18 +578,12 @@ Packet *create_key_exchange(char* client_nonce_buf, ServerHello* server_hello, i
     // get signature from certificate
     uint8_t *signature = server_cert -> data + key_len;
     size_t signature_len = server_cert_size - key_len - sizeof(Certificate);
-    fprintf(stderr, "server cert key len %d\n", key_len);
-    fprintf(stderr, "signature len %ld\n", signature_len);
-    fprintf(stderr, "server sig size %d\n", server_sig_size);
 
-    for (size_t i = 0; i < server_cert_size; i++) {
-        fprintf(stderr, "%02x ", (unsigned char)raw_cert_buf[i]);
-    }
-    fprintf(stderr, "\n");
 
     // extract signature of client nonce
     char* client_nonce_signed = (char*) malloc(server_sig_size);
     memcpy(client_nonce_signed, server_hello->data + server_cert_size, server_sig_size);
+    fprintf(stderr, "PRINTGIN %ld\n", server_sig_size + server_cert_size + sizeof(ServerHello));
 
     // Verify server signature inside of the certificate
     if (!verify(server_public_key, key_len, (char*) signature, signature_len, ec_ca_public_key)) {
@@ -611,14 +613,10 @@ Packet *create_key_exchange(char* client_nonce_buf, ServerHello* server_hello, i
     size_t self_signature_size = sign((char*)server_public_key, key_len, NULL);
     // Allocate memory for client certificate
     Certificate* client_cert = (Certificate*)malloc(sizeof(Certificate) + pub_key_size + self_signature_size);
-    if (client_cert == NULL) {
-        //fprintf(stderr, "Failed to allocate memory for client certificate.\n");
-        close(sockfd);
-        exit(EXIT_FAILURE);
-    }
     // Initialize client_cert
     client_cert -> key_len = htons(pub_key_size); 
-    client_cert -> padding = 0;
+    client_cert -> padding = ntohs(0);
+    fprintf(stderr, "PUB KEY SIZE%d\n", (pub_key_size));
     memcpy(client_cert->data, public_key, pub_key_size); 
 
     size_t self_sig_size = sign((char*)public_key, sizeof(public_key), NULL);
@@ -640,18 +638,18 @@ Packet *create_key_exchange(char* client_nonce_buf, ServerHello* server_hello, i
     }
 
     //now create the keyexchage packet
-    KeyExchangeRequest* key_exchange = (KeyExchangeRequest*) malloc(sizeof(KeyExchangeRequest) + sizeof(Certificate) + pub_key_size + self_signature_size + nonce_signature_size);
-    // size of signature & certificate
+    size_t total_size = sizeof(KeyExchangeRequest) + sizeof(Certificate) + pub_key_size + self_signature_size + nonce_signature_size + (sizeof(Certificate) + pub_key_size + self_signature_size)%16;
+    KeyExchangeRequest* key_exchange = (KeyExchangeRequest*) malloc(total_size);
     key_exchange -> sig_size = nonce_signature_size; 
     key_exchange -> cert_size = htons(sizeof(Certificate) + self_signature_size + pub_key_size);
     // copy certificate into data
     memcpy(key_exchange->data, client_cert, sizeof(Certificate) + pub_key_size + self_signature_size); 
     // copy signature of server nonce into data
-    memcpy(key_exchange->data + sizeof(Certificate) + self_signature_size + pub_key_size, nonce_signature, nonce_signature_size); 
+    memcpy(key_exchange->data + sizeof(Certificate) + self_signature_size + pub_key_size + (sizeof(Certificate) + pub_key_size + self_signature_size)%16, nonce_signature, nonce_signature_size); 
     
     key_exchange -> header.msg_type = KEY_EXCHANGE_REQUEST; 
     key_exchange -> header.padding = htons(0); 
-    key_exchange -> header.msg_len = htons(sizeof(KeyExchangeRequest) - sizeof(SecurityHeader) + nonce_signature_size + sizeof(Certificate) + pub_key_size + self_signature_size); //may be wrong
+    key_exchange -> header.msg_len = htons(total_size - sizeof(KEY_EXCHANGE_REQUEST));//may be wrong
     
     Packet *packet = (Packet *)malloc(sizeof(Packet) + ntohs(key_exchange->header.msg_len));
     if (packet == nullptr) {
@@ -659,10 +657,10 @@ Packet *create_key_exchange(char* client_nonce_buf, ServerHello* server_hello, i
         free(key_exchange);
         return nullptr;
     }
-    memcpy(packet->data, key_exchange, sizeof(KeyExchangeRequest) + sizeof(Certificate) + sizeof(Certificate) + self_signature_size + pub_key_size + key_exchange -> sig_size);
+    memcpy(packet->data, key_exchange, total_size);
     packet->packet_number = htonl(2); // You may need to set this accordingly
     packet->acknowledgment_number = htonl(2); // You may need to set this accordingly
-    packet->payload_size = htons(ntohs(key_exchange->header.msg_len));
+    packet->payload_size = htons(total_size);
 
     free(nonce_signature);
     free(key_exchange);

@@ -95,11 +95,11 @@
             "max_score": 10
         },
         {
-            "status": "failed",
+            "status": "passed",
             "name": "Secure binary transfer (reference client->server)",
-            "output": "client -> server transfer failed",
+            "output": "Transfer successful",
             "visibility": "visible",
-            "score": 0,
+            "score": 15,
             "max_score": 15
         },
         {
@@ -111,11 +111,11 @@
             "max_score": 15
         },
         {
-            "name": "Total points: 35/100",
+            "name": "Total points: 50/100",
             "status": "passed",
             "visibility": "visible"
         }
     ],
-    "score": 35,
+    "score": 50,
     "visibility": "visible"
 }

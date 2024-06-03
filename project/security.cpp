@@ -176,6 +176,7 @@ size_t decrypt_cipher(char *cipher, size_t size, char *iv, char *data, int using
 void hmac(char* data, size_t size, char* digest) {
     unsigned int mac_size = MAC_SIZE;
     HMAC(EVP_sha256(), mac_key, SECRET_SIZE, (const unsigned char*) data, size, (unsigned char*) digest, &mac_size);
+
 }
 
 void clean_up() {
