@@ -188,9 +188,9 @@ int main(int argc, char *argv[]) {
                     // Verify the packet MAC if encryption with MAC is enabled
                     if (encrypt_mac) {
                         char* received_mac = (char*) encrypted->data + encrypted_data_size;
-                        char computed_mac_code[encrypted_data_size + IV_SIZE];
+                        char computed_mac_code[32];
                         hmac(encrypted_data, encrypted_data_size + IV_SIZE, computed_mac_code);
-                        fprintf(stderr, "Received MAC: ");
+                        // fprintf(stderr, "Received MAC: ");
                         // for (int i = 0; i < MAC_SIZE; i++) {
                         //     fprintf(stderr, "%02X ", (unsigned char)received_mac[i]);
                         // }
@@ -204,7 +204,7 @@ int main(int argc, char *argv[]) {
                             close(sockfd);
                             exit(EXIT_FAILURE);
                         }
-                        fprintf(stderr, "Verification of packet mac code succeeded.\n");
+                        // fprintf(stderr, "Verification of packet mac code succeeded.\n");
                     }
 
                     
@@ -237,8 +237,7 @@ int main(int argc, char *argv[]) {
                             char iv[IV_SIZE];
                             memcpy(iv, (char*) encrypted->init_vector, IV_SIZE);
                             char decrypted_data[encrypted_data_size];
-                            size_t size = decrypt_cipher((char*)encrypted -> data, encrypted_data_size, iv, decrypted_data, 0);
-                            fprintf(stderr, "DCSIZE%ld\n", size);
+                            size_t size = decrypt_cipher((char*)encrypted -> data, encrypted_data_size, iv, decrypted_data, encrypt_mac);
                             write(1, decrypted_data, size); //check later
                         }
                         free(server_window[left_pointer]);
@@ -465,12 +464,12 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
             // output_size = input_size + (block_size - (input_size % block_size))
             size_t block_size = EVP_CIPHER_block_size(EVP_aes_256_cbc());
             size_t cipher_buf_size = bytesRead + (block_size - (bytesRead % block_size));
-            fprintf(stderr, "cipher buf size: %ld \n", cipher_buf_size);
+            // fprintf(stderr, "cipher buf size: %ld \n", cipher_buf_size);
             char *cipher = (char *)malloc(cipher_buf_size);
             char iv[IV_SIZE];
             
             // BUGGY -- SEGFAULT / INVALID POINTER ERROR HAPPENS HERE
-            size_t cipher_size = encrypt_data(read_buf, bytesRead, iv, cipher, 0);
+            size_t cipher_size = encrypt_data(read_buf, bytesRead, iv, cipher, int(encrypt_mac));
             //fprintf(stderr, "cipher size: %ld \n", cipher_size);
 
             // BUGGY -- DOUBLE FREE / INVALID POINTER HAPPENS SOMEWHERE HERE
@@ -498,7 +497,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
             // this is causing me to lose braincells.
             else {
                 EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
-                encrypt_data->payload_size = htons(cipher_size + MAC_SIZE);
+                encrypt_data->payload_size = htons(cipher_size);
                 encrypt_data->padding = 0;
                 memcpy(encrypt_data->init_vector, iv, IV_SIZE);
                 memcpy(encrypt_data->data, cipher, cipher_size);

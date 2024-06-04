@@ -87,11 +87,11 @@
             "max_score": 5
         },
         {
-            "status": "failed",
+            "status": "passed",
             "name": "Encrypt-then-MAC (reference client->server)",
-            "output": "client -> server transfer failed",
+            "output": "Transfer successful",
             "visibility": "visible",
-            "score": 0,
+            "score": 10,
             "max_score": 10
         },
         {
@@ -127,11 +127,11 @@
             "max_score": 5
         },
         {
-            "name": "Total points: 90/100",
+            "name": "Total points: 100/100",
             "status": "passed",
             "visibility": "visible"
         }
     ],
-    "score": 90,
+    "score": 100,
     "visibility": "visible"
 }

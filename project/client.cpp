@@ -20,7 +20,7 @@
 
 // Function prototypes
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in serveraddr);
-Packet *create_client_hello(char* client_nonce_buf);
+Packet *create_client_hello(char* client_nonce_buf, bool encrypt_mac);
 Packet *create_key_exchange(char* client_nonce_buf, ServerHello* server_hello, int sockfd, struct sockaddr_in serveraddr);
 Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int &curr_packet_num, int input_left, int input_right, bool &timer_active, struct timeval &timer_start);
 
@@ -113,7 +113,7 @@ int main(int argc, char *argv[])
         //security handshake
         if(handshake){ // start handshake, assume acks are incrementing curr pack num
             if(curr_packet_num == 1 && input_window[1] == NULL){
-                input_window[curr_packet_num] = create_client_hello(client_nonce_buf); //create client hello if not yet created
+                input_window[curr_packet_num] = create_client_hello(client_nonce_buf, encrypt_mac); //create client hello if not yet created
                 sendto(sockfd, input_window[curr_packet_num], sizeof(ClientHello) + 12, 0, (struct sockaddr *)&serveraddr, serversize); //send packet
                 curr_packet_num += 1;
                 fprintf(stderr, "SENT CLIENT HELLO\n");
@@ -183,9 +183,8 @@ int main(int argc, char *argv[])
                     // Verify the packet MAC if encryption with MAC is enabled
                     if (encrypt_mac) {
                         char* received_mac = (char*) encrypted->data + encrypted_data_size;
-                        char computed_mac_code[encrypted_data_size + IV_SIZE];
+                        char computed_mac_code[32];
                         hmac(encrypted_data, encrypted_data_size + IV_SIZE, computed_mac_code);
-                        fprintf(stderr, "Received MAC: ");
                         // for (int i = 0; i < MAC_SIZE; i++) {
                         //     fprintf(stderr, "%02X ", (unsigned char)received_mac[i]);
                         // }
@@ -199,7 +198,7 @@ int main(int argc, char *argv[])
                             close(sockfd);
                             exit(EXIT_FAILURE);
                         }
-                        fprintf(stderr, "Verification of packet mac code succeeded.\n");
+                        // fprintf(stderr, "Verification of packet mac code succeeded.\n");
                     }
 
                     
@@ -225,7 +224,7 @@ int main(int argc, char *argv[])
                         // write packet is leftmost packet in buffer
                         Packet *current_write_packet = (Packet*) server_window[left_pointer];
                         uint8_t* current_write_packet_data = current_write_packet -> data; 
-                        // fprintf(stdout, "%.*s", received_payload_size, payload);
+                        // fprintf(stdout, "LK:JLK:DSFJSDF%d\n", left_pointer);
                         // fflush(stdout);
                         if(flag == 0){
                             write(STDOUT_FILENO, current_write_packet_data, ntohs(current_write_packet-> payload_size));
@@ -236,7 +235,7 @@ int main(int argc, char *argv[])
                             char iv[IV_SIZE];
                             memcpy(iv, (char*) encrypted->init_vector, IV_SIZE);
                             char decrypted_data[encrypted_data_size];
-                            size_t size = decrypt_cipher((char*)encrypted -> data, encrypted_data_size, iv, decrypted_data, 0);
+                            size_t size = decrypt_cipher((char*)encrypted -> data, encrypted_data_size, iv, decrypted_data, encrypt_mac);
                             write(1, decrypted_data, size); //check later
                         }
                         free(server_window[left_pointer]);
@@ -413,8 +412,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
     }
     
     if (bytesRead > 0) {
-        fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
-        fprintf(stderr, "current packet num %d\n", curr_packet_num);
+        // fprintf(stderr, "current packet num %d\n", curr_packet_num);
 
         // create a new packet
         Packet* new_packet = (Packet*)malloc(sizeof(Packet) + 1024);
@@ -423,7 +421,6 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
 
         // encrypt data 
         if (flag == 1) {
-            fprintf(stderr, "ENCRYPT DATA\n");
             // output_size = input_size + (block_size - (input_size % block_size))
 
             size_t block_size = EVP_CIPHER_block_size(EVP_aes_256_cbc());
@@ -432,7 +429,8 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
             char iv[IV_SIZE];
             
             // BUGGY -- SEGFAULT / INVALID POINTER ERROR HAPPENS HERE
-            size_t cipher_size = encrypt_data(read_buf, bytesRead, iv, cipher, 0);
+            size_t cipher_size = encrypt_data(read_buf, bytesRead, iv, cipher, int(encrypt_mac));
+
             //fprintf(stderr, "cipher size: %ld \n", cipher_size);
 
             // BUGGY -- DOUBLE FREE / INVALID POINTER HAPPENS SOMEWHERE HERE
@@ -461,9 +459,9 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
             // mac (so hungry i need a big mac rn)
             // this is causing me to lose braincells.
             else {
-                fprintf(stderr, "NOT ECYPRT MAC MODE\n");
+                // fprintf(stderr, "NOT ECYPRT MAC MODE\n");
                 EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
-                encrypt_data->payload_size = htons(cipher_size + MAC_SIZE);
+                encrypt_data->payload_size = htons(cipher_size);
                 encrypt_data->padding = 0;
                 memcpy(encrypt_data->init_vector, iv, IV_SIZE);
                 memcpy(encrypt_data->data, cipher, cipher_size);
@@ -476,7 +474,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
                 char mac[MAC_SIZE];
                 hmac(concatenated_data, total_size, mac);
                 memcpy(encrypt_data->data + cipher_size, mac, MAC_SIZE);
-                fprintf(stderr, "HMAC over data: %.*s\n", MAC_SIZE, mac);
+                // fprintf(stderr, "HMAC over data: %.*s\n", MAC_SIZE, mac);
                 encrypt_data -> header.msg_type = DATA; 
                 encrypt_data -> header.padding = 0; 
                 encrypt_data -> header.msg_len = htons(sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader));
@@ -513,14 +511,14 @@ void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in servera
     sendto(sockfd, &ack_packet, sizeof(Packet), 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
 }
 
-Packet *create_client_hello(char* client_nonce_buf){
+Packet *create_client_hello(char* client_nonce_buf, bool encrypt_mac){
     ClientHello* client_hello = (ClientHello*)malloc(sizeof(ClientHello));
     if (client_hello == nullptr) {
         //fprintf(stderr, "Memory allocation failed for ClientHello.\n");
         return nullptr;
     }
     // Initialize comm_type based on flag
-    client_hello->comm_type = 0; 
+    client_hello->comm_type = int(encrypt_mac); 
     // Initialize padding to zero
     // memset(client_hello->padding, 0, 2);
     // Generate client nonce
@@ -587,7 +585,6 @@ Packet *create_key_exchange(char* client_nonce_buf, ServerHello* server_hello, i
     // extract signature of client nonce
     char* client_nonce_signed = (char*) malloc(server_sig_size);
     memcpy(client_nonce_signed, server_hello->data + server_cert_size , server_sig_size);
-    fprintf(stderr, "PRINTGIN %d\n", server_sig_size);
     if(memcmp(client_nonce_signed, ptr +40 + 166, server_sig_size)!= 0){
         fprintf(stderr, "DI\n");
     }
