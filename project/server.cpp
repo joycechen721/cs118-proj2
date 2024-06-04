@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
                 // retransmit leftmost unacked packet if not NULL
 
                 // FROM RAWR: Add 1 to left pointer for retransmit
-                Packet* retransmit = input_window[input_left+ 1];
+                Packet* retransmit = input_window[input_left];
                 fprintf(stderr, "SERVER RETR PACK %d\n", input_left);
                 if (retransmit) {
                     //fprintf(stderr, "Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
@@ -133,7 +133,7 @@ int main(int argc, char *argv[]) {
             // fprintf(stderr, "received payload size: %d\n", received_payload_size);
 
             // receive an ack --> update input window
-            if (received_ack_number != 0 || left_pointer == 1) {
+            if (received_ack_number != 0) {
                 //fprintf(stderr, "received ack: %d\n", received_ack_number);
                 
                 // receive ack for fin
