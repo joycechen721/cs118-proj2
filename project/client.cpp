@@ -90,25 +90,25 @@ int main(int argc, char *argv[])
 
     while(true){
         // retransmission from rto
-        // if (timer_active) {
-        //     struct timeval now;
-        //     gettimeofday(&now, NULL);
-        //     double elapsed_time = (now.tv_sec - timer_start.tv_sec) + (now.tv_usec - timer_start.tv_usec) / 1e6;
-        //     // timer expired
-        //     if (elapsed_time >= RTO) {
-        //         // retransmit leftmost unacked packet if not NULL
-        //         Packet* retransmit = input_window[input_left];
-        //         if (retransmit) {
-        //             //fprintf(stderr, "Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
-        //             int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&serveraddr, serversize);
-        //             if (did_send < 0) {
-        //                 perror("Retransmit failed");
-        //             }
-        //         }
-        //         // reset timer
-        //         gettimeofday(&timer_start, NULL);
-        //     }
-        // }
+        if (timer_active) {
+            struct timeval now;
+            gettimeofday(&now, NULL);
+            double elapsed_time = (now.tv_sec - timer_start.tv_sec) + (now.tv_usec - timer_start.tv_usec) / 1e6;
+            // timer expired
+            if (elapsed_time >= RTO) {
+                // retransmit leftmost unacked packet if not NULL
+                Packet* retransmit = input_window[input_left];
+                if (retransmit) {
+                    fprintf(stderr, "Retransmitting packet with num: %d\n", input_left);
+                    int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&serveraddr, serversize);
+                    if (did_send < 0) {
+                        perror("Retransmit failed");
+                    }
+                }
+                // reset timer
+                gettimeofday(&timer_start, NULL);
+            }
+        }
 
         //security handshake
         if(handshake){ // start handshake, assume acks are incrementing curr pack num
@@ -137,7 +137,7 @@ int main(int argc, char *argv[])
             // fprintf(stderr, "received payload size: %d\n", received_payload_size);
 
             // receive an ack --> update input window
-            if (received_ack_number != 0 ) {
+            if (received_ack_number != 0 || input_left ==1) {
                 // if(received_ack_number == 3 && handshake){
                 //     handshake = false;
                 // }
@@ -152,7 +152,7 @@ int main(int argc, char *argv[])
                         }
                     }
                     //fprintf(stderr, "HAHAHA2\n");
-                    input_left = received_ack_number;
+                    input_left = received_ack_number + 1 ;
                     input_right = 20 + input_left;
                     // //fprintf(stderr, "input right: %d\n", input_right);
 
@@ -237,7 +237,6 @@ int main(int argc, char *argv[])
                             memcpy(iv, (char*) encrypted->init_vector, IV_SIZE);
                             char decrypted_data[encrypted_data_size];
                             size_t size = decrypt_cipher((char*)encrypted -> data, encrypted_data_size, iv, decrypted_data, 0);
-                            fprintf(stderr, "DCSIZE%ld\n", size);
                             write(1, decrypted_data, size); //check later
                         }
                         free(server_window[left_pointer]);
@@ -337,10 +336,8 @@ int main(int argc, char *argv[])
                         }
 
                         fprintf(stderr, "RECEIVED FIN \n");
-                        
-                        send_ACK(received_packet_number + 1, sockfd, serveraddr);
-
                         handshake = false;
+                        send_ACK(3, sockfd, serveraddr);
                         if (encrypt_mac) {
                             derive_keys();
 
@@ -350,7 +347,7 @@ int main(int argc, char *argv[])
                         free(server_window[2]);
                         server_window[2] = NULL;
                         left_pointer += 1;
-                        input_left +=1;
+                        fprintf(stderr, "MAKE %d %d\n", left_pointer, input_left);
                     }
                 }
             }
@@ -399,6 +396,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
 
     // check if we're within the send window
     int bytesRead = 0;
+    // fprintf(stderr, "curr_packet_num: %d, input_left: %d, input_right: %d\n", curr_packet_num, input_left, input_right);
     if (curr_packet_num >= input_left && curr_packet_num <= input_right){
         if (flag == 1 && encrypt_mac) {
             bytesRead = read(STDIN_FILENO, read_buf, 898);
@@ -415,11 +413,11 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
     }
     
     if (bytesRead > 0) {
-        // fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
-        // fprintf(stderr, "current packet num %d\n", curr_packet_num);
+        fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
+        fprintf(stderr, "current packet num %d\n", curr_packet_num);
 
         // create a new packet
-        Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
+        Packet* new_packet = (Packet*)malloc(sizeof(Packet) + 1024);
         new_packet->packet_number = htonl((uint32_t) curr_packet_num);
         new_packet->acknowledgment_number = htonl((uint32_t)0);
 
@@ -430,7 +428,6 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
 
             size_t block_size = EVP_CIPHER_block_size(EVP_aes_256_cbc());
             size_t cipher_buf_size = bytesRead + (block_size - (bytesRead % block_size));
-            //fprintf(stderr, "cipher buf size: %ld \n", cipher_buf_size);
             char *cipher = (char *)malloc(cipher_buf_size);
             char iv[IV_SIZE];
             
@@ -464,6 +461,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
             // mac (so hungry i need a big mac rn)
             // this is causing me to lose braincells.
             else {
+                fprintf(stderr, "NOT ECYPRT MAC MODE\n");
                 EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
                 encrypt_data->payload_size = htons(cipher_size + MAC_SIZE);
                 encrypt_data->padding = 0;
@@ -478,6 +476,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
                 char mac[MAC_SIZE];
                 hmac(concatenated_data, total_size, mac);
                 memcpy(encrypt_data->data + cipher_size, mac, MAC_SIZE);
+                fprintf(stderr, "HMAC over data: %.*s\n", MAC_SIZE, mac);
                 encrypt_data -> header.msg_type = DATA; 
                 encrypt_data -> header.padding = 0; 
                 encrypt_data -> header.msg_len = htons(sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader));
@@ -493,6 +492,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
         // non-encrypted data
         else {
             new_packet->payload_size = htons((uint16_t)bytesRead);
+            fprintf(stderr, "BYTES READ %d\n", ((uint16_t)bytesRead));
             memcpy(new_packet->data, read_buf, bytesRead);
         }
 
@@ -504,10 +504,12 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
     return NULL;
 }
 
+
+
 // Sends cumulative ACK depending on the packet number received
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in serveraddr) {
     Packet ack_packet = {0};
-    ack_packet.acknowledgment_number = htonl(left_window_index -1 );
+    ack_packet.acknowledgment_number = htonl(left_window_index -1);
     sendto(sockfd, &ack_packet, sizeof(Packet), 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
 }
 

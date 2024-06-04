@@ -39,19 +39,19 @@
             "max_score": 5
         },
         {
-            "status": "failed",
+            "status": "passed",
             "name": "Binary transfer (client->reference server, losses)",
-            "output": "client -> server transfer failed",
+            "output": "Transfer successful",
             "visibility": "visible",
-            "score": 0,
+            "score": 5,
             "max_score": 5
         },
         {
-            "status": "failed",
+            "status": "passed",
             "name": "Binary transfer (reference client->server, losses)",
-            "output": "server -> client transfer failed",
+            "output": "Transfer successful",
             "visibility": "visible",
-            "score": 0,
+            "score": 5,
             "max_score": 5
         },
         {
@@ -127,11 +127,11 @@
             "max_score": 5
         },
         {
-            "name": "Total points: 80/100",
+            "name": "Total points: 90/100",
             "status": "passed",
             "visibility": "visible"
         }
     ],
-    "score": 80,
+    "score": 90,
     "visibility": "visible"
 }

@@ -84,7 +84,7 @@ int main(int argc, char *argv[]) {
     while (true) {
         
         // retransmission from rto
-        if (timer_active) {
+        if (timer_active && flag == 0) {
             struct timeval now;
             gettimeofday(&now, NULL);
             double elapsed_time = (now.tv_sec - timer_start.tv_sec) + (now.tv_usec - timer_start.tv_usec) / 1e6;
@@ -129,12 +129,12 @@ int main(int argc, char *argv[]) {
             uint16_t received_payload_size = ntohs(received_packet->payload_size);
             
             // fprintf(stderr, "received ack #: %d\n", received_ack_number);
-            fprintf(stderr, "received packet #: %d\n", received_packet_number);
+            // fprintf(stderr, "received packet #: %d\n", received_packet_number);
             // fprintf(stderr, "received payload size: %d\n", received_payload_size);
 
             // receive an ack --> update input window
-            if (received_ack_number != 0) {
-                //fprintf(stderr, "received ack: %d\n", received_ack_number);
+            if (received_ack_number != 0 || input_left == 1) {
+                // fprintf(stderr, "SERVER received ack: %d\n", received_ack_number);
                 
                 // receive ack for fin
                 if (handshake && received_ack_number == 2) {
@@ -152,12 +152,12 @@ int main(int argc, char *argv[]) {
                     // free packets from input_left to ack #
                     for (int i = input_left; i <= received_ack_number; i++) {
                         if (input_window[i] != NULL) {
-                            fprintf(stderr, "free input #: %d\n", i);
+                            // fprintf(stderr, "free input #: %d\n", i);
                             free(input_window[i]);
                             input_window[i] = NULL;
                         }
                     }
-                    input_left = received_ack_number;
+                    input_left = received_ack_number + 1;
                     input_right = 20 + input_left;
 
                     // cancel timer if no unacked packets
@@ -262,6 +262,7 @@ int main(int argc, char *argv[]) {
                     else {
                         new_packet->acknowledgment_number = htonl(left_pointer - 1);
                         input_window[curr_packet_num] = new_packet;
+                        // fprintf(stderr, "SERVER sent packet #: %d\n", curr_packet_num);
 
                         // input_window[curr_packet_num] = (Packet*)malloc(sizeof(Packet) + ntohs(new_packet->payload_size));
                         // if (input_window[curr_packet_num] == NULL) {
@@ -401,7 +402,7 @@ int main(int argc, char *argv[]) {
             if (new_packet != NULL) {
                 // fprintf(stderr, "creating new packet\n");
                 input_window[curr_packet_num] = new_packet;
-                fprintf(stderr, "sent packet #: %d", curr_packet_num);
+                // fprintf(stderr, "SERV sent packet #: %d\n", curr_packet_num);
 
                 // input_window[curr_packet_num] = (Packet*)malloc(sizeof(Packet) + ntohs(new_packet->payload_size));
                 // if (input_window[curr_packet_num] == NULL) {
@@ -411,7 +412,6 @@ int main(int argc, char *argv[]) {
                 // }
                 // memcpy(input_window[curr_packet_num], new_packet, sizeof(Packet) + ntohs(new_packet->payload_size));
                 curr_packet_num += 1;
-                // fprintf(stderr, "meow: %d\n", ntohs(new_packet->payload_size));
                 int did_send = sendto(sockfd, new_packet, sizeof(Packet) + ntohs(new_packet->payload_size), 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
                 if (did_send < 0) return errno;
                 
@@ -455,7 +455,7 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
         // fprintf(stderr, "current packet num %d\n", curr_packet_num);
 
         // create a new packet
-        Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
+        Packet* new_packet = (Packet*)malloc(sizeof(Packet) + 1024);
         new_packet->packet_number = htonl((uint32_t) curr_packet_num);
         new_packet->acknowledgment_number = htonl((uint32_t)0);
 
