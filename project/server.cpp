@@ -84,25 +84,25 @@ int main(int argc, char *argv[]) {
     while (true) {
         
         // retransmission from rto
-        // if (timer_active) {
-        //     struct timeval now;
-        //     gettimeofday(&now, NULL);
-        //     double elapsed_time = (now.tv_sec - timer_start.tv_sec) + (now.tv_usec - timer_start.tv_usec) / 1e6;
-        //     // timer expired
-        //     if (elapsed_time >= RTO) {
-        //         // retransmit leftmost unacked packet if not NULL
-        //         Packet* retransmit = input_window[input_left];
-        //         if (retransmit) {
-        //             //fprintf(stderr, "Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
-        //             int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&clientaddr, clientsize);
-        //             if (did_send < 0) {
-        //                 perror("Retransmit failed");
-        //             }
-        //         }
-        //         // reset timer
-        //         gettimeofday(&timer_start, NULL);
-        //     }
-        // }
+        if (timer_active) {
+            struct timeval now;
+            gettimeofday(&now, NULL);
+            double elapsed_time = (now.tv_sec - timer_start.tv_sec) + (now.tv_usec - timer_start.tv_usec) / 1e6;
+            // timer expired
+            if (elapsed_time >= RTO) {
+                // retransmit leftmost unacked packet if not NULL
+                Packet* retransmit = input_window[input_left];
+                if (retransmit) {
+                    //fprintf(stderr, "Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
+                    int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&clientaddr, clientsize);
+                    if (did_send < 0) {
+                        perror("Retransmit failed");
+                    }
+                }
+                // reset timer
+                gettimeofday(&timer_start, NULL);
+            }
+        }
 
         //security handshake
         // if(handshake) { //if handshake still ongoing
@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "received payload size: %d\n", received_payload_size);
 
             // receive an ack --> update input window
-            if (received_ack_number != 0 ) {
+            if (received_packet_number != 0  || left_pointer == 1) {
                 //fprintf(stderr, "received ack: %d\n", received_ack_number);
                 
                 // receive ack for fin
@@ -150,7 +150,7 @@ int main(int argc, char *argv[]) {
                     for (int i = input_left; i <= received_ack_number; i++) {
                         if (input_window[i] != NULL) {
                             fprintf(stderr, "free input #: %d\n", i);
-                            // free(input_window[i]);
+                            free(input_window[i]);
                             input_window[i] = NULL;
                         }
                     }
@@ -627,6 +627,6 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce, uint8_t *serve
 // Sends cumulative ACK depending on the packet number received
 void send_ACK(uint32_t left_window_index, int sockfd, struct sockaddr_in clientaddr) {
     Packet ack_packet = {0};
-    ack_packet.acknowledgment_number = htonl(left_window_index);
+    ack_packet.acknowledgment_number = htonl(left_window_index -1 );
     sendto(sockfd, &ack_packet, sizeof(Packet), 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
 }

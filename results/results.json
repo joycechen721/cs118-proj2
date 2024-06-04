@@ -55,11 +55,11 @@
             "max_score": 5
         },
         {
-            "status": "failed",
+            "status": "passed",
             "name": "Binary transfer (client->reference server, packet reordering)",
-            "output": "server -> client transfer failed",
+            "output": "Transfer successful",
             "visibility": "visible",
-            "score": 0,
+            "score": 5,
             "max_score": 5
         },
         {
@@ -111,11 +111,11 @@
             "max_score": 15
         },
         {
-            "name": "Total points: 50/100",
+            "name": "Total points: 55/100",
             "status": "passed",
             "visibility": "visible"
         }
     ],
-    "score": 50,
+    "score": 55,
     "visibility": "visible"
 }

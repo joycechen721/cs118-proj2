@@ -5,6 +5,7 @@
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 #include <stdio.h>
+#include <openssl/err.h>
 #include "security.h"
 
 #include <errno.h>
@@ -130,12 +131,17 @@ int verify(char* data, size_t size, char* signature, size_t sig_size, EVP_PKEY* 
         return 0; 
     }
     if (EVP_DigestVerifyUpdate(mdctx, data, size) != 1) {
-        // Handle error: failed to update verification context
         perror("error3");
         EVP_MD_CTX_free(mdctx);
         return 0;
     }
-    int verification_result = EVP_DigestVerifyFinal(mdctx, (unsigned char *)signature, sig_size);
+    int verification_result = EVP_DigestVerifyFinal(mdctx, (const unsigned char*) signature, sig_size);
+    if (verification_result != 1) {
+    unsigned long error_code = ERR_get_error();
+    int library_number = ERR_GET_LIB(error_code);
+    int reason_code = ERR_GET_REASON(error_code);
+    fprintf(stderr, "Verification failed. Library: %d, Reason: %d\n", library_number, reason_code);
+}
     EVP_MD_CTX_free(mdctx);
     return verification_result;
 }

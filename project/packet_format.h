@@ -40,7 +40,7 @@ typedef struct {
 
 typedef struct {
     SecurityHeader header;
-    uint8_t comm_type;
+    uint8_t comm_type; //inphut40
     uint8_t sig_size;
     uint16_t cert_size;
     uint8_t server_nonce[32];
