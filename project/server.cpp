@@ -555,7 +555,10 @@ Packet *create_fin() {
 
 // send ServerHello message back to client
 Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
-    uint8_t sig_size = sign((char*)client_nonce, 32, NULL);
+    char sig[255];
+    int sig_size = sign((char*) client_nonce, 32, sig);
+
+    // uint8_t sig_size = sign((char*)client_nonce, 32, NULL);
     fprintf(stderr, "cert size: %d\n", cert_size);
     fprintf(stderr, "sig size: %d\n", sig_size);
 
@@ -580,19 +583,24 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
     memcpy(server_hello->data, certificate, cert_size);
     server_hello->cert_size = htons(cert_size);
 
+    fprintf(stderr, "Certificate: ");
     for (size_t i = 0; i < cert_size; i++) {
-        fprintf(stderr, "%02x ", (unsigned char)certificate[i]);
+        fprintf(stderr, "%d ", server_hello->data[i]);
     }
     fprintf(stderr, "\n");
 
-    char *server_nonce_sig = (char*)malloc(sig_size);
-    sign((char*)client_nonce, 32, server_nonce_sig);
-    memcpy(server_hello->data + cert_size, server_nonce_sig, sig_size);
+
+    // char *server_nonce_sig = (char*)malloc(sig_size);
+    // uint8_t ss = sign((char*) client_nonce, 32, server_nonce_sig);
+
+    // sign((char*)client_nonce, 32, server_nonce_sig);
+    memcpy(server_hello->data + cert_size, sig, sig_size);
     //fprintf(stderr, "sig size %ld\n", cert_size + sig_size);   
 
     server_hello->sig_size = sig_size;
-    free(server_nonce_sig);
+    // free(server_nonce_sig);
     server_hello -> header.msg_len = htons(sizeof(ServerHello) + cert_size + sig_size - sizeof(SecurityHeader));
+    // fprintf(stderr, "server hello size %ld\n", sizeof(ServerHello) + cert_size + sig_size - sizeof(SecurityHeader));   
 
     size_t server_hello_size = sizeof(ServerHello) + cert_size + sig_size;
     Packet* packet = (Packet*)malloc(sizeof(Packet) + server_hello_size);
@@ -609,6 +617,13 @@ Packet *create_server_hello(int comm_type, uint8_t *client_nonce){
     fprintf(stderr, "payload size %ld\n", server_hello_size);   
 
     memcpy(packet->data, server_hello, server_hello_size);
+
+    unsigned char *byte_ptr = (unsigned char*)certificate + 4;
+    for (size_t i = 0; i < sig_size; i++) {
+        fprintf(stderr, "%d ", byte_ptr[i]);
+    }
+    fprintf(stderr, "\n");
+
     free(server_hello);
     server_hello = NULL;
     return packet;

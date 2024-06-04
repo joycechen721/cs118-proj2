@@ -1,0 +1,20 @@
+docker pull eado0/reliability-is-essential
+Using default tag: latest
+latest: Pulling from eado0/reliability-is-essential
+Digest: sha256:3fea9d4dcab8f4dd8bcafe804789dc81a09e989935916e4238ce60b39a9da2b3
+Status: Image is up to date for eado0/reliability-is-essential:latest
+docker.io/eado0/reliability-is-essential:latest
+docker run --rm -v ./project:/autograder/submission/project -v ./results:/autograder/results eado0/reliability-is-essential /autograder/run_autograder && cat results/results.json
+Binary files small_2.bin and client_out.tmp differ
+Binary files small_1.bin and server_out.tmp differ
+Packet loss occurred client -> proxy
+Packet loss occurred proxy -> server
+Packet loss occurred client -> proxy
+Packet loss occurred proxy -> server
+Packet loss occurred proxy -> server
+Packet loss occurred client -> proxy
+Packet loss occurred proxy -> server
+Packet loss occurred client -> proxy
+Packet loss occurred client -> proxy
+Packet loss occurred client -> proxy
+Packet loss occurred proxy -> server

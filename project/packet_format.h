@@ -2,6 +2,7 @@
 #define PACKET_H
 #include <stdlib.h>
 
+// total 12 bytes
 typedef struct {
     uint32_t packet_number;        // 32-bit Packet Number
     uint32_t acknowledgment_number; // 32-bit Acknowledgment Number
@@ -31,10 +32,11 @@ typedef struct {
     // uint8_t signature[0];
 } Certificate;
 
+// 40 bytes
 typedef struct {
     SecurityHeader header;
     uint8_t comm_type;
-    uint16_t padding;
+    uint8_t padding[3];
     uint8_t client_nonce[32];
 } ClientHello;
 

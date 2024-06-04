@@ -275,6 +275,12 @@ int main(int argc, char *argv[])
                     if(curr_packet_num == 2 && server_window[1] != NULL && input_window[2] == NULL){ //create the exchange message if recieved an serverhello/ack from server, server send the hello, and input window null
                         fprintf(stderr, "RECEIVED SERVER HELLO\n");
                         Packet* server_hello_packet = server_window[1];
+
+                        unsigned char *byte_ptr = (unsigned char*)server_hello_packet;
+                        // for (size_t i = 0; i < sizeof(Packet) + ntohs(server_hello_packet->payload_size); i++) {
+                        //     fprintf(stdout, "%02x ", byte_ptr[i]);
+                        // }
+
                         ServerHello *server_hello = (ServerHello *) server_hello_packet -> data;
 
                         SecurityHeader* header = &server_hello -> header;
@@ -425,7 +431,6 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
             //fprintf(stderr, "cipher size: %ld \n", cipher_size);
 
             // BUGGY -- DOUBLE FREE / INVALID POINTER HAPPENS SOMEWHERE HERE
-
             // create encrypted data message
             // no mac 
             if (!encrypt_mac) {
@@ -510,7 +515,8 @@ Packet *create_client_hello(char* client_nonce_buf){
     // Initialize comm_type based on flag
     client_hello->comm_type = 1; 
     // Initialize padding to zero
-    client_hello->padding = 0; 
+    memset(client_hello->padding, 0, sizeof(client_hello->padding));
+    // client_hello->padding = 0; 
     // Generate client nonce
     // char client_nonce_buf[32]; // 32 bytes for the nonce
     generate_nonce(client_nonce_buf, 32); // fill nonce_buf with 32 bytes of data
@@ -526,11 +532,19 @@ Packet *create_client_hello(char* client_nonce_buf){
         free(client_hello);
         return nullptr;
     }
-    memcpy(packet->data, client_hello, sizeof(client_hello));
+    memcpy(packet->data, client_hello, sizeof(ClientHello));
+
+    fprintf(stderr, "Client Nonce: ");
+    for (size_t i = 0; i < 32; i++) {
+        fprintf(stderr, "%d ", packet->data[i + 8]);
+    }
+    fprintf(stderr, "\n");
+
+
 
     packet->packet_number = htonl(1);
     packet->acknowledgment_number = htonl(0);
-    packet->payload_size = htons(sizeof(client_hello)); //flag for later
+    packet->payload_size = htons(sizeof(ClientHello)); //flag for later
     free(client_hello); // Free the memory allocated for ClientHello since it's copied into packet
     return packet;
 }
@@ -564,8 +578,8 @@ Packet *create_key_exchange(char* client_nonce_buf, ServerHello* server_hello, i
     fprintf(stderr, "certificate length %u\n", server_cert_size);
 
     // get server public key from certificate
-    char* server_public_key = (char*)malloc(key_len);
-    memcpy(server_public_key, server_cert->data, key_len);
+    uint8_t* server_public_key = server_cert->data;
+    // memcpy(server_public_key, , key_len);
 
     // get signature from certificate
     uint8_t *signature = server_cert -> data + key_len;
@@ -574,30 +588,31 @@ Packet *create_key_exchange(char* client_nonce_buf, ServerHello* server_hello, i
     fprintf(stderr, "signature len %ld\n", signature_len);
     fprintf(stderr, "server sig size %d\n", server_sig_size);
 
-    for (size_t i = 0; i < server_cert_size; i++) {
-        fprintf(stderr, "%02x ", (unsigned char)raw_cert_buf[i]);
-    }
-    fprintf(stderr, "\n");
-
     // extract signature of client nonce
     char* client_nonce_signed = (char*) malloc(server_sig_size);
     memcpy(client_nonce_signed, server_hello->data + server_cert_size, server_sig_size);
 
+    for (size_t i = 0; i < signature_len; i++) {
+        fprintf(stderr, "%d ", (unsigned char)signature[i]);
+    }
+    fprintf(stderr, "\n");
+    
     // Verify server signature inside of the certificate
-    if (!verify(server_public_key, key_len, (char*) signature, signature_len, ec_ca_public_key)) {
+    if (verify((char*)server_public_key, key_len, (char*) signature, signature_len, ec_ca_public_key) != 1) {
         fprintf(stderr, "Verification of server certificate failed.\n");
         close(sockfd);
         exit(EXIT_FAILURE);
     }
+    
 
     // load server public key
-    load_peer_public_key(server_public_key, key_len);
+    load_peer_public_key((char*) server_public_key, key_len);
     if(ec_peer_public_key == NULL){
         fprintf(stderr, "errrrrm what the sigma\n");
     }
-
+// fprintf(stderr, "HERE\n");
     // verify server signature over client nonce
-    if (!verify((char*)client_nonce_buf, 32, (char*)client_nonce_signed, server_sig_size, ec_peer_public_key)) {
+    if (verify((char*)client_nonce_buf, 32, (char*)client_nonce_signed, server_sig_size, ec_peer_public_key) != 1) {
         fprintf(stderr, "Verification of signature failed.\n");
         close(sockfd);
         exit(EXIT_FAILURE);
