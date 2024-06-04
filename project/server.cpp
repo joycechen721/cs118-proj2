@@ -91,7 +91,10 @@ int main(int argc, char *argv[]) {
             // timer expired
             if (elapsed_time >= RTO) {
                 // retransmit leftmost unacked packet if not NULL
-                Packet* retransmit = input_window[input_left];
+
+                // FROM RAWR: Add 1 to left pointer for retransmit
+                Packet* retransmit = input_window[input_left+ 1];
+                fprintf(stderr, "SERVER RETR PACK %d\n", input_left);
                 if (retransmit) {
                     //fprintf(stderr, "Retransmitting packet with size: %ld\n", sizeof(Packet) + ntohs(retransmit->payload_size));
                     int did_send = sendto(sockfd, retransmit, sizeof(Packet) + ntohs(retransmit->payload_size), 0, (struct sockaddr *)&clientaddr, clientsize);
@@ -126,11 +129,11 @@ int main(int argc, char *argv[]) {
             uint16_t received_payload_size = ntohs(received_packet->payload_size);
             
             // fprintf(stderr, "received ack #: %d\n", received_ack_number);
-            // fprintf(stderr, "received packet #: %d\n", received_packet_number);
-            fprintf(stderr, "received payload size: %d\n", received_payload_size);
+            fprintf(stderr, "received packet #: %d\n", received_packet_number);
+            // fprintf(stderr, "received payload size: %d\n", received_payload_size);
 
             // receive an ack --> update input window
-            if (received_packet_number != 0  || left_pointer == 1) {
+            if (received_ack_number != 0 || left_pointer == 1) {
                 //fprintf(stderr, "received ack: %d\n", received_ack_number);
                 
                 // receive ack for fin
@@ -216,7 +219,6 @@ int main(int argc, char *argv[]) {
                 }
                 // copy received packet into server_window
                 memcpy(server_window[received_packet_number], received_packet, sizeof(Packet) + received_payload_size);
-        
                 // Update left pointer until it points to nothing, adjust right pointer too
                 if(!handshake){     
                     while (server_window[left_pointer] != NULL) {
@@ -289,6 +291,7 @@ int main(int argc, char *argv[]) {
                 // }
                 else{
                     //fprintf(stderr, "revd pack num%d\n",received_packet_number );
+                    // FROM RAWR: send ack is combined? with the next stdin read so don't need to send (commented out below)
                     // send_ACK(received_packet_number + 1, sockfd, clientaddr);
                     if(input_left == 1 && server_window[1] != NULL && input_window[1] == NULL){//can only make server hello if we recieve client hello and input window 0 is null
                         fprintf(stderr, "RECEIVE CLIENT HELLO\n");

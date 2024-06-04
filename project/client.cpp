@@ -132,19 +132,18 @@ int main(int argc, char *argv[])
             uint32_t received_ack_number = ntohl(received_packet->acknowledgment_number);
             uint16_t received_payload_size = ntohs(received_packet->payload_size);
             
-            fprintf(stderr, "received ack #: %d\n", received_ack_number);
-            fprintf(stderr, "received packet #: %d\n", received_packet_number);
-            fprintf(stderr, "received payload size: %d\n", received_payload_size);
+            // fprintf(stderr, "received ack #: %d\n", received_ack_number);
+            // fprintf(stderr, "received packet #: %d\n", received_packet_number);
+            // fprintf(stderr, "received payload size: %d\n", received_payload_size);
 
             // receive an ack --> update input window
-            if (received_packet_number != 0 || left_pointer == 1) {
-                fprintf(stderr, "received ack: %d\n", received_ack_number);
+            if (received_ack_number != 0 || left_pointer == 1) {
                 // if(received_ack_number == 3 && handshake){
                 //     handshake = false;
                 // }
                 if (received_ack_number >= input_left) {
                     // free packets from input_left to ack #
-                    for (int i = input_left; i < received_ack_number; i++) {
+                    for (int i = input_left; i <= received_ack_number; i++) {
                         if (input_window[i] != NULL) {
                             //fprintf(stderr, "HAHAHA\n");
                             free(input_window[i]);
@@ -153,7 +152,7 @@ int main(int argc, char *argv[])
                         }
                     }
                     //fprintf(stderr, "HAHAHA2\n");
-                    input_left = received_ack_number;
+                    input_left = received_ack_number+1;
                     input_right = 20 + input_left;
                     // //fprintf(stderr, "input right: %d\n", input_right);
 
@@ -372,16 +371,14 @@ int main(int argc, char *argv[])
                 // }
                 // memcpy(input_window[curr_packet_num], new_packet, sizeof(Packet) + ntohs(new_packet->payload_size));
                 curr_packet_num += 1;
-
                 int did_send = sendto(sockfd, new_packet, sizeof(Packet) + ntohs(new_packet->payload_size), 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
-                //fprintf(stderr, "did_send size %d: \n", did_send);
                 if (did_send < 0) return errno;
-
-                // reset timer
+                    // reset timer
                 if (!timer_active) {
                     timer_active = true;
                     gettimeofday(&timer_start, NULL);
                 }
+                
             }
         }
         // TEST CODE for SEND:
@@ -418,8 +415,8 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
     }
     
     if (bytesRead > 0) {
-        fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
-        fprintf(stderr, "current packet num %d\n", curr_packet_num);
+        // fprintf(stderr, "bytes read from stdin %d\n", bytesRead);
+        // fprintf(stderr, "current packet num %d\n", curr_packet_num);
 
         // create a new packet
         Packet* new_packet = (Packet*)malloc(sizeof(Packet) + bytesRead);
@@ -467,7 +464,6 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
             // mac (so hungry i need a big mac rn)
             // this is causing me to lose braincells.
             else {
-                fprintf(stderr, "NOT ECYPRT MAC MODE\n");
                 EncryptedData* encrypt_data = (EncryptedData*)malloc(sizeof(EncryptedData) + cipher_size + MAC_SIZE);
                 encrypt_data->payload_size = htons(cipher_size + MAC_SIZE);
                 encrypt_data->padding = 0;
@@ -482,7 +478,6 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
                 char mac[MAC_SIZE];
                 hmac(concatenated_data, total_size, mac);
                 memcpy(encrypt_data->data + cipher_size, mac, MAC_SIZE);
-                fprintf(stderr, "HMAC over data: %.*s\n", MAC_SIZE, mac);
                 encrypt_data -> header.msg_type = DATA; 
                 encrypt_data -> header.padding = 0; 
                 encrypt_data -> header.msg_len = htons(sizeof(EncryptedData) + cipher_size + MAC_SIZE - sizeof(SecurityHeader));
@@ -498,7 +493,6 @@ Packet* read_from_stdin(int flag, bool encrypt_mac, Packet* input_window[], int 
         // non-encrypted data
         else {
             new_packet->payload_size = htons((uint16_t)bytesRead);
-            fprintf(stderr, "BYTES READ %d\n", ((uint16_t)bytesRead));
             memcpy(new_packet->data, read_buf, bytesRead);
         }
 
